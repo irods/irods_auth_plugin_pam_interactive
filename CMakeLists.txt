@@ -23,7 +23,7 @@ set(CMAKE_SHARED_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-
 set(CMAKE_MODULE_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE_INIT "-Wl,--gc-sections -Wl,-z,combreloc")
 
-project(irods_resource_plugin-s3
+project(irods_auth_interactive_pam
   VERSION "${IRODS_PLUGIN_VERSION}"
   LANGUAGES CXX
 )
@@ -141,3 +141,10 @@ target_compile_definitions(
   PRIVATE
   ${IRODS_COMPILE_DEFINITIONS_PRIVATE}
 )
+
+include(IrodsCPackPlatform)
+set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam")
+set(CPACK_RPM_PACKAGE_REQUIRES "${IRODS_PACKAGE_DEPENDENCIES_STRING}, irods-runtime = ${IRODS_VERSION}, curl-devel")
+
+
+include(CPack)
