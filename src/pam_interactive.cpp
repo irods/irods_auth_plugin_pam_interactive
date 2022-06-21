@@ -92,7 +92,6 @@ namespace irods
   public:
     pam_interactive_authentication()
     {
-      std::cout << "pam_interactive_authentication" << std::endl;
       add_operation(AUTH_CLIENT_AUTH_REQUEST,  OPERATION(rcComm_t, pam_auth_client_request));
       add_operation(AUTH_CLIENT_AUTH_RESPONSE, OPERATION(rcComm_t, pam_auth_response));
       add_operation(perform_running,           OPERATION(rcComm_t, step_client_standard));
@@ -114,13 +113,10 @@ namespace irods
   private:
     json auth_client_start(rcComm_t& comm, const json& req)
     {
-      std::cout << "auth_client_start " << req << std::endl;
       json resp{req};
       resp["user_name"] = comm.proxyUser.userName;
       resp["zone_name"] = comm.proxyUser.rodsZone;
       resp[irods_auth::next_operation] = AUTH_CLIENT_AUTH_REQUEST;
-      std::cout << std::endl;
-      std::cout << resp << std::endl;
       return resp;
     }
 
@@ -129,7 +125,6 @@ namespace irods
     ///////////////////////////////////////////////
     json pam_auth_client_request(rcComm_t& comm, const json& req)
     {
-      std::cout << "pam_auth_client_request " << req << std::endl;
       start_ssl(comm);
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_REQUEST;
@@ -141,7 +136,6 @@ namespace irods
 
     json pam_auth_response(rcComm_t&comm, const json& req)
     {
-      std::cout << "pam_auth_response " << req << std::endl;
       irods_auth::throw_if_request_message_is_missing_key(req, {"user_name", "zone_name"});
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
@@ -156,7 +150,6 @@ namespace irods
     ///////////////////////////////////////////////
     json step_client_standard(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_client_standard " << req << std::endl;
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
       auto res = irods_auth::request(comm, svr_req);
@@ -168,7 +161,6 @@ namespace irods
     ///////////////////////////////////////////////
     json step_waiting(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_waiting " << req << std::endl;
       std::string input;
       json svr_req{req};
       std::getline (std::cin, input);
@@ -179,7 +171,6 @@ namespace irods
 
     json step_waiting_pw(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_waiting_pw " << req << std::endl;
       std::string pw = get_password_from_client_stdin();
       json svr_req{req};
       svr_req["resp"] = pw;
@@ -189,7 +180,6 @@ namespace irods
 
     json step_error(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_error " << req << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
@@ -198,7 +188,6 @@ namespace irods
 
     json step_timeout(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_timeout " << req << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
@@ -208,14 +197,12 @@ namespace irods
     json step_authenticated(rcComm_t& comm, const json& req)
     {
       static constexpr const char* auth_scheme_native = "native";
-      std::cout << "step_authenticated " << req << std::endl;
       // This operation is basically just running the entire native authentication flow
       // because this is how the PAM authentication plugin has worked historically. This
       // is done in order to minimize communications with the PAM server as iRODS does
       // not use proper "sessions".
       json resp{req};
       const auto& pw = req.at("request_result").get_ref<const std::string&>();
-      std::cout << "Save" << std::endl;
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
@@ -242,7 +229,6 @@ namespace irods
 
     json step_not_authenticated(rcComm_t& comm, const json& req)
     {
-      std::cout << "step_not_authenticated " << req << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
