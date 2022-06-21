@@ -63,6 +63,8 @@ target_link_libraries(
    pam_handshake_auth_check
    PRIVATE
    ${PAM_LIBRARY}
+   ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++.so.1
+   ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++abi.so.1
 )
 
 
@@ -139,7 +141,34 @@ target_include_directories(
 target_compile_definitions(
   irods_auth_plugin-pam_interactive_server
   PRIVATE
+  RODS_SERVER
+  ENABLE_RE
+  IRODS_ENABLE_SYSLOG
   ${IRODS_COMPILE_DEFINITIONS_PRIVATE}
+)
+
+
+# unit test
+add_executable(
+  run_test
+  test/test_main.cpp
+  test/test_message.cpp
+)
+
+target_include_directories(
+  run_test
+  PRIVATE
+  ${IRODS_EXTERNALS_PACKAGE_ROOT}/catch22.13.8-0/include/
+  /usr/include/irods/
+  src
+)
+
+target_link_libraries(
+  run_test
+  PRIVATE
+  nlohmann_json::nlohmann_json
+  ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++.so.1
+  ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++abi.so.1
 )
 
 include(IrodsCPackPlatform)
