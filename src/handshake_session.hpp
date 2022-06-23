@@ -56,7 +56,7 @@ namespace PamHandshake
     virtual void textInfo(const char * msg) override;
     virtual bool canceled() override;
     void cancel();
-    static const char *  StateToString(const State & s);
+    inline static const char *  StateToString(const State & s);
     State getState() const;
     std::pair<State, std::string> pull(const char * response,
                                        std::size_t len);
@@ -87,4 +87,21 @@ namespace PamHandshake
     inline bool statePredicate(State s);
   }; 
 
+}
+
+inline const char * PamHandshake::Session::StateToString(const Session::State & s)
+{
+  switch(s)
+  {
+  case State::Running: return "running";
+  case State::Ready: return "ready";
+  case State::Waiting: return "waiting";
+  case State::WaitingPw: return "waiting_pw";
+  case State::Response: return "response";
+  case State::Next:  return "next";
+  case State::Error:  return "error";
+  case State::Timeout:  return "timeout";
+  case State::Authenticated: return "authenticated";
+  case State::NotAuthenticated: return "not_authenticated";
+  }
 }

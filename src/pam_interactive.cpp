@@ -26,8 +26,9 @@
 
 #include <openssl/md5.h>
 
-#ifdef RODS_SERVER
 #include "handshake_session.hpp"
+
+#ifdef RODS_SERVER
 #include "irods/irods_rs_comm_query.hpp"
 #include "irods/rsAuthCheck.hpp"
 #include "irods/rsAuthRequest.hpp"
@@ -78,6 +79,7 @@ namespace irods
 {
   class pam_interactive_authentication : public irods_auth::authentication_base {
   private:
+    using Session = PamHandshake::Session;
     static constexpr const char* perform_running = "running";
     static constexpr const char* perform_ready = "ready";
     static constexpr const char* perform_waiting = "waiting";
@@ -94,10 +96,10 @@ namespace irods
     {
       add_operation(AUTH_CLIENT_AUTH_REQUEST,  OPERATION(rcComm_t, pam_auth_client_request));
       add_operation(AUTH_CLIENT_AUTH_RESPONSE, OPERATION(rcComm_t, pam_auth_response));
-      add_operation(perform_running,           OPERATION(rcComm_t, step_client_standard));
-      add_operation(perform_ready,             OPERATION(rcComm_t, step_client_standard));
-      add_operation(perform_next,              OPERATION(rcComm_t, step_client_standard));
-      add_operation(perform_response,          OPERATION(rcComm_t, step_client_standard));
+      add_operation(perform_running,           OPERATION(rcComm_t, step_client_running));
+      add_operation(perform_ready,             OPERATION(rcComm_t, step_client_ready));
+      add_operation(perform_next,              OPERATION(rcComm_t, step_client_next));
+      add_operation(perform_response,          OPERATION(rcComm_t, step_client_response));
       add_operation(perform_waiting,           OPERATION(rcComm_t, step_waiting));
       add_operation(perform_waiting_pw,        OPERATION(rcComm_t, step_waiting_pw));
       add_operation(perform_error,             OPERATION(rcComm_t, step_error));
@@ -111,8 +113,26 @@ namespace irods
         } // ctor
 
   private:
-    json auth_client_start(rcComm_t& comm, const json& req)
-    {
+    void patch_state(nlohmann::json & req) {
+      if(req["msg"].contains("patch")) {
+        nlohmann::json & patch(req["msg"]["patch"]);
+        for(auto & it : patch)
+        {
+         std::string op(it.value("op", std::string("")));
+         if(op == "add" || op == "replace") {
+            if(!it.contains("value")) {
+              it["value"] = req.value("resp", std::string(""));
+            }
+          }
+        }
+        req["pstate"] = req["pstate"].patch(patch);
+        req["pdirty"] = true;
+        req["msg"].erase("patch");
+      }
+    }
+
+
+    json auth_client_start(rcComm_t& comm, const json& req) {
       json resp{req};
       resp["user_name"] = comm.proxyUser.userName;
       resp["zone_name"] = comm.proxyUser.rodsZone;
@@ -123,37 +143,78 @@ namespace irods
     ///////////////////////////////////////////////
     // state REQUEST
     ///////////////////////////////////////////////
-    json pam_auth_client_request(rcComm_t& comm, const json& req)
-    {
+    json pam_auth_client_request(rcComm_t& comm, const json& req) {
       start_ssl(comm);
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_REQUEST;
       auto res = irods_auth::request(comm, svr_req);
-
       res[irods_auth::next_operation] =  AUTH_CLIENT_AUTH_RESPONSE;
       return res;      
     }
 
-    json pam_auth_response(rcComm_t&comm, const json& req)
-    {
+    json pam_auth_response(rcComm_t&comm, const json& req) {
       irods_auth::throw_if_request_message_is_missing_key(req, {"user_name", "zone_name"});
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
+
+      // initialize state
+      svr_req["pdirty"] = false;
+      svr_req["pstate"] = "{}"_json;
+      std::string file_name(pam_auth_file_name());
+      std::ifstream file(file_name.c_str());
+      if (file.is_open()) {
+        file >> svr_req["pstate"];
+        file.close();
+      }
       auto resp = irods_auth::request(comm, svr_req);
       return resp;
     }
-    
-
 
     ///////////////////////////////////////////////
-    // state NEXT, RUNNING, READY RESPONSE
+    // state NEXT
     ///////////////////////////////////////////////
-    json step_client_standard(rcComm_t& comm, const json& req)
+    json step_client_next(rcComm_t& comm, const json& req) {
+      std::string prompt = req["msg"].value("prompt", std::string(""));
+      if(!prompt.empty()) {
+        std::cout << prompt << std::flush;
+      }
+      json svr_req{req};
+      patch_state(svr_req);
+      svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
+      return irods_auth::request(comm, svr_req);
+    }
+
+    ///////////////////////////////////////////////
+    // state RUNNING
+    ///////////////////////////////////////////////
+    json step_client_running(rcComm_t& comm, const json& req)
     {
       json svr_req{req};
+      patch_state(svr_req);
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
-      auto res = irods_auth::request(comm, svr_req);
-      return res;
+      return irods_auth::request(comm, svr_req);
+    }
+
+    ///////////////////////////////////////////////
+    // state READY
+    ///////////////////////////////////////////////
+    json step_client_ready(rcComm_t& comm, const json& req)
+    {
+      json svr_req{req};
+      patch_state(svr_req);
+      svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
+      return irods_auth::request(comm, svr_req);
+    }
+
+    ///////////////////////////////////////////////
+    // state RESPONSE
+    ///////////////////////////////////////////////
+    json step_client_response(rcComm_t& comm, const json& req)
+    {
+      json svr_req{req};
+      patch_state(svr_req);
+      svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
+      return irods_auth::request(comm, svr_req);
     }
 
     ///////////////////////////////////////////////
@@ -161,19 +222,49 @@ namespace irods
     ///////////////////////////////////////////////
     json step_waiting(rcComm_t& comm, const json& req)
     {
+      //force_password_prompt":true
       std::string input;
       json svr_req{req};
+      std::string prompt = req["msg"].value("prompt", std::string(""));
+      std::string default_value = req["pstate"].value(prompt, std::string(""));
+      if(default_value.empty()) {
+        std::cout << prompt << " " << std::flush;
+      }
+      else {
+        std::cout << prompt << "[" << default_value << "] " << std::flush;
+      }
       std::getline (std::cin, input);
-      svr_req["resp"] = input;
-      svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
+      input.erase(remove_if(input.begin(), input.end(), isspace), input.end());
+      if(input.empty()) {
+        svr_req["resp"] = default_value;
+      }
+      else { 
+        svr_req["resp"] = input;
+      }
+      svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;  
+      patch_state(svr_req);
       return irods_auth::request(comm, svr_req);
     }
 
     json step_waiting_pw(rcComm_t& comm, const json& req)
     {
+      std::string prompt = req["msg"].value("prompt", std::string(""));
+      std::string default_value = req["pstate"].value(prompt, std::string(""));
+      if(default_value.empty()) {
+        std::cout << prompt << " " << std::flush;
+      }
+      else {
+        std::cout << prompt << "[" << default_value << "] " << std::flush;
+      }
       std::string pw = get_password_from_client_stdin();
       json svr_req{req};
-      svr_req["resp"] = pw;
+      if(pw.empty()) {
+        svr_req["resp"] = default_value;
+      }
+      else { 
+        svr_req["resp"] = pw;
+      }
+      patch_state(svr_req);
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
       return irods_auth::request(comm, svr_req);
     }
@@ -194,6 +285,17 @@ namespace irods
       return res;
     }
 
+    std::string pam_auth_file_name() const
+    {
+      char *authfilename = getRodsEnvAuthFileName();
+      if(authfilename && *authfilename != '\0') {
+        return std::string(authfilename) + ".json";
+      }
+      else {
+        return std::string(getenv( "HOME" )) + "/.irods/.irodsA.json";
+      }
+    }
+
     json step_authenticated(rcComm_t& comm, const json& req)
     {
       static constexpr const char* auth_scheme_native = "native";
@@ -206,6 +308,16 @@ namespace irods
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
+      std::string file_name(pam_auth_file_name());
+      std::ofstream file(file_name.c_str());
+      if (file.is_open()) {
+        file << req["pstate"];
+        file.close();
+      }
+      else {
+        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
+      }
+
 
       // The authentication password needs to be removed from the request message as it
       // will send the password over the network without SSL being necessarily enabled.
@@ -281,7 +393,6 @@ namespace irods
     json pam_auth_agent_response(rsComm_t& comm, const json& req)
     {
       using log_auth = irods::experimental::log::authentication;
-      using Session = PamHandshake::Session;
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
 
@@ -315,11 +426,40 @@ namespace irods
       auto session = Session::getSingleton(PAM_STACK_NAME,
                                            PAM_CHECKER,
                                            SESSION_TIMEOUT);
-      auto p = session->pull(0, 0);
+                               
+                               
+      std::string resp_str(req.value("resp", std::string("")));
+
+      auto p = session->pull(resp_str.c_str(), resp_str.size());
 
       json resp{req};
       resp[irods_auth::next_operation] = Session::StateToString(p.first);
-      resp["msg"] = p.second;
+      if(p.second.empty() || p.second[0] != '{') {
+        if(p.first == Session::State::WaitingPw || p.first == Session::State::Waiting ) {
+          std::string prompt = p.second;
+          if(prompt.empty()) {
+            if(p.first == Session::State::WaitingPw) {
+              prompt = "password";
+            }
+            else {
+              prompt = "username";
+            }
+          }
+          std::string path = std::string("/") + prompt;
+          resp["msg"] = { {"prompt", prompt},
+                          {"password", (p.first == Session::State::WaitingPw)},
+                          {"patch", {
+                            {{"op", "add"}, {"path", path}}}}};
+        }
+        else {
+          std::string path = p.second.empty() ? "/value" : std::string("/") + p.second;
+          resp["msg"] = {{"prompt", p.second}};
+          resp["xxx"] = p.second;
+        }
+      }
+      else {
+        resp["msg"] = nlohmann::json::parse(p.second, nullptr, true);  
+      }
       return resp;
     }
 #endif

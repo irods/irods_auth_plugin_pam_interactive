@@ -207,23 +207,6 @@ std::time_t Session::getLastTime() const
   return lastTime;
 }
 
-const char * Session::StateToString(const Session::State & s)
-{
-  switch(s)
-  {
-  case State::Running: return "running";
-  case State::Ready: return "ready";
-  case State::Waiting: return "waiting";
-  case State::WaitingPw: return "waiting_pw";
-  case State::Response: return "response";
-  case State::Next:  return "next";
-  case State::Error:  return "error";
-  case State::Timeout:  return "timeout";
-  case State::Authenticated: return "authenticated";
-  case State::NotAuthenticated: return "not_authenticated";
-  }
-}
-
 Session::State Session::getState() const
 {
   std::lock_guard<std::mutex> lk(mutex);

@@ -147,30 +147,6 @@ target_compile_definitions(
   ${IRODS_COMPILE_DEFINITIONS_PRIVATE}
 )
 
-
-# unit test
-add_executable(
-  run_test
-  test/test_main.cpp
-  test/test_message.cpp
-)
-
-target_include_directories(
-  run_test
-  PRIVATE
-  ${IRODS_EXTERNALS_PACKAGE_ROOT}/catch22.13.8-0/include/
-  /usr/include/irods/
-  src
-)
-
-target_link_libraries(
-  run_test
-  PRIVATE
-  nlohmann_json::nlohmann_json
-  ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++.so.1
-  ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++abi.so.1
-)
-
 include(IrodsCPackPlatform)
 set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam")
 set(CPACK_RPM_PACKAGE_REQUIRES "${IRODS_PACKAGE_DEPENDENCIES_STRING}, irods-runtime = ${IRODS_VERSION}, curl-devel")
