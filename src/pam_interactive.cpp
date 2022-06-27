@@ -91,6 +91,8 @@ namespace irods
     static constexpr const char* perform_authenticated = "authenticated";
     static constexpr const char* perform_not_authenticated = "not_authenticated";
 
+    static constexpr const int default_pam_time_to_live = 3600; //in seconds @todo paramterize this setting
+
   public:
     pam_interactive_authentication()
     {
@@ -131,9 +133,58 @@ namespace irods
       }
     }
 
+    void initialize_state(json& resp) {
+      // initialize state
+      resp["pdirty"] = false;
+      resp["pstate"] = "{}"_json;
+      std::string file_name(pam_auth_file_name());
+      std::ifstream file(file_name.c_str());
+      if (file.is_open()) {
+        file >> resp["pstate"];
+        file.close();
+      }
+      if(!resp["pstate"].contains("__expire__")) {
+
+      }
+    }
+
+    bool is_pam_valid(const json & resp) {
+      // return false if expiration date > now or not set
+      std::string expire_str = resp["pstate"].value("__expire__", std::string(""));
+      if(!expire_str.empty()) {
+        std::istringstream ss(expire_str);
+        std::tm t = {};
+        ss.imbue(std::locale("en_US.UTF-8"));
+        ss >> std::get_time(&t, "%Y-%m-%d %H:%M:%S");
+        if (ss.fail()) {
+          throw std::runtime_error(std::string("failed to parse date time:'") + expire_str + "'");
+        }
+        if(std::difftime(std::mktime(&t), std::time(nullptr)) > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    void add_pam_exiration(json & resp) {
+      std::time_t expire = std::time(0) + default_pam_time_to_live;
+      std::ostringstream ss;
+      ss << std::put_time(std::gmtime(&expire), "%Y-%m-%d %H:%M:%S") << std::flush;
+      resp["pstate"]["__expire__"] = ss.str();
+    }
 
     json auth_client_start(rcComm_t& comm, const json& req) {
+      static constexpr const char* auth_scheme_native = "native";
       json resp{req};
+      initialize_state(resp);
+      if(is_pam_valid(resp)) {
+        // pam session still valid -> use native scheme
+        rodsEnv env{};
+        std::strncpy(env.rodsAuthScheme, auth_scheme_native, NAME_LEN);
+        irods_auth::authenticate_client(comm, env, json{});
+        resp[irods_auth::next_operation] = irods_auth::flow_complete;
+        return resp;
+      }
       resp["user_name"] = comm.proxyUser.userName;
       resp["zone_name"] = comm.proxyUser.rodsZone;
       resp[irods_auth::next_operation] = AUTH_CLIENT_AUTH_REQUEST;
@@ -158,14 +209,14 @@ namespace irods
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
 
       // initialize state
-      svr_req["pdirty"] = false;
-      svr_req["pstate"] = "{}"_json;
-      std::string file_name(pam_auth_file_name());
-      std::ifstream file(file_name.c_str());
-      if (file.is_open()) {
-        file >> svr_req["pstate"];
-        file.close();
-      }
+      //svr_req["pdirty"] = false;
+      //svr_req["pstate"] = "{}"_json;
+      //std::string file_name(pam_auth_file_name());
+      //std::ifstream file(file_name.c_str());
+      //if (file.is_open()) {
+       // file >> svr_req["pstate"];
+      //  file.close();
+      //}
       auto resp = irods_auth::request(comm, svr_req);
       return resp;
     }
@@ -254,7 +305,7 @@ namespace irods
         std::cout << prompt << " " << std::flush;
       }
       else {
-        std::cout << prompt << "[" << default_value << "] " << std::flush;
+        std::cout << prompt << "[******] " << std::flush;
       }
       std::string pw = get_password_from_client_stdin();
       json svr_req{req};
@@ -308,10 +359,11 @@ namespace irods
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
+      add_pam_exiration(resp);
       std::string file_name(pam_auth_file_name());
       std::ofstream file(file_name.c_str());
       if (file.is_open()) {
-        file << req["pstate"];
+        file << resp["pstate"];
         file.close();
       }
       else {
@@ -322,7 +374,6 @@ namespace irods
       // The authentication password needs to be removed from the request message as it
       // will send the password over the network without SSL being necessarily enabled.
       resp.erase(irods::AUTH_PASSWORD_KEY);
-
 
       rodsEnv env{};
       
@@ -454,7 +505,6 @@ namespace irods
         else {
           std::string path = p.second.empty() ? "/value" : std::string("/") + p.second;
           resp["msg"] = {{"prompt", p.second}};
-          resp["xxx"] = p.second;
         }
       }
       else {
