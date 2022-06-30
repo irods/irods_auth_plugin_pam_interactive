@@ -32,6 +32,7 @@
 #include "irods/irods_rs_comm_query.hpp"
 #include "irods/rsAuthCheck.hpp"
 #include "irods/rsAuthRequest.hpp"
+#include "irods/irods_server_properties.hpp"
 #endif
 
 #ifdef RODS_SERVER
@@ -90,8 +91,17 @@ namespace irods
     static constexpr const char* perform_timeout = "timeout";
     static constexpr const char* perform_authenticated = "authenticated";
     static constexpr const char* perform_not_authenticated = "not_authenticated";
+    static constexpr const char* perform_native_auth = "native_auth";
+   
+    //offset between the TTL in the database and the expiration time in the local json document
+    static constexpr const int pam_time_to_live_offset = 60;
 
-    static constexpr const int default_pam_time_to_live = 3600; //in seconds @todo paramterize this setting
+    // pam entry in json document is valid for this amount of seconds
+    // this value can be overwritten with the --ttl option of iinit
+    // and the password min time if the server_config.json
+    static constexpr const int pam_time_to_live_default = 3600;
+
+    static constexpr const char* pam_interactive_scheme = "pam_interactive";
 
   public:
     pam_interactive_authentication()
@@ -108,6 +118,7 @@ namespace irods
       add_operation(perform_timeout,           OPERATION(rcComm_t, step_timeout));
       add_operation(perform_authenticated,     OPERATION(rcComm_t, step_authenticated));
       add_operation(perform_not_authenticated, OPERATION(rcComm_t, step_not_authenticated));
+      add_operation(perform_native_auth,       OPERATION(rcComm_t, auth_client_perform_native_auth));
 #ifdef RODS_SERVER
       add_operation(AUTH_AGENT_AUTH_REQUEST,   OPERATION(rsComm_t, pam_auth_agent_request));
       add_operation(AUTH_AGENT_AUTH_RESPONSE,  OPERATION(rsComm_t, pam_auth_agent_response));
@@ -115,11 +126,12 @@ namespace irods
         } // ctor
 
   private:
+    
+    // Apply patch to the persistence state.
     void patch_state(nlohmann::json & req) {
       if(req["msg"].contains("patch")) {
         nlohmann::json & patch(req["msg"]["patch"]);
-        for(auto & it : patch)
-        {
+        for(auto & it : patch) {
          std::string op(it.value("op", std::string("")));
          if(op == "add" || op == "replace") {
             if(!it.contains("value")) {
@@ -133,8 +145,8 @@ namespace irods
       }
     }
 
+    // initialize the persistence state of the PAM stack
     void initialize_state(json& resp) {
-      // initialize state
       resp["pdirty"] = false;
       resp["pstate"] = "{}"_json;
       std::string file_name(pam_auth_file_name());
@@ -148,6 +160,7 @@ namespace irods
       }
     }
 
+    // return true, if the configuration is still valid
     bool is_pam_valid(const json & resp) {
       // return false if expiration date > now or not set
       std::string expire_str = resp["pstate"].value("__expire__", std::string(""));
@@ -166,19 +179,44 @@ namespace irods
       return false;
     }
 
+    // add the expiration time to the persistent state
     void add_pam_exiration(json & resp) {
-      std::time_t expire = std::time(0) + default_pam_time_to_live;
+      int ttl_seconds = resp.value<int>("ttl_seconds", 0);
+      // make sure that ttl on the client side expires before
+      // the entry on the server.
+      // In this way the user is sent to usual pam_interactive flow iinit instead of 
+      // just getting an authentication error
+      // The TTL is also checked in the backend
+      ttl_seconds-= pam_time_to_live_offset;
+      if(ttl_seconds < 0) {
+        ttl_seconds = 0;
+      }
+      if(ttl_seconds == 0) {
+        ttl_seconds = pam_time_to_live_default;
+      }
+      std::time_t expire = std::time(0) + ttl_seconds; 
       std::ostringstream ss;
       ss << std::put_time(std::gmtime(&expire), "%Y-%m-%d %H:%M:%S") << std::flush;
       resp["pstate"]["__expire__"] = ss.str();
+    }
+
+    // returns true if iinit context
+    bool check_force_prompt(const json & req) const {
+      const auto force_prompt = req.find(irods_auth::force_password_prompt);
+      if (req.end() != force_prompt && force_prompt->get<bool>()) {
+        return true; 
+      }
+      return false;
     }
 
     json auth_client_start(rcComm_t& comm, const json& req) {
       static constexpr const char* auth_scheme_native = "native";
       json resp{req};
       initialize_state(resp);
-      if(is_pam_valid(resp)) {
-        // pam session still valid -> use native scheme
+      if(!check_force_prompt(resp) && is_pam_valid(resp)) {
+        // authenticatation flow is not invoked from icommand other than iinit
+        // and native password is still valid 
+        // use native scheme
         rodsEnv env{};
         std::strncpy(env.rodsAuthScheme, auth_scheme_native, NAME_LEN);
         irods_auth::authenticate_client(comm, env, json{});
@@ -207,16 +245,6 @@ namespace irods
       irods_auth::throw_if_request_message_is_missing_key(req, {"user_name", "zone_name"});
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
-
-      // initialize state
-      //svr_req["pdirty"] = false;
-      //svr_req["pstate"] = "{}"_json;
-      //std::string file_name(pam_auth_file_name());
-      //std::ifstream file(file_name.c_str());
-      //if (file.is_open()) {
-       // file >> svr_req["pstate"];
-      //  file.close();
-      //}
       auto resp = irods_auth::request(comm, svr_req);
       return resp;
     }
@@ -227,7 +255,7 @@ namespace irods
     json step_client_next(rcComm_t& comm, const json& req) {
       std::string prompt = req["msg"].value("prompt", std::string(""));
       if(!prompt.empty()) {
-        std::cout << prompt << std::flush;
+        std::cout << prompt << std::endl << std::flush;
       }
       json svr_req{req};
       patch_state(svr_req);
@@ -270,10 +298,11 @@ namespace irods
 
     ///////////////////////////////////////////////
     // state WAITING
+    //
+    // wait for user input and send the result back to server
     ///////////////////////////////////////////////
     json step_waiting(rcComm_t& comm, const json& req)
     {
-      //force_password_prompt":true
       std::string input;
       json svr_req{req};
       std::string prompt = req["msg"].value("prompt", std::string(""));
@@ -297,6 +326,11 @@ namespace irods
       return irods_auth::request(comm, svr_req);
     }
 
+    ///////////////////////////////////////////////
+    // state WAITING_PW
+    //
+    // wait for user password input and send the result back to server
+    ///////////////////////////////////////////////
     json step_waiting_pw(rcComm_t& comm, const json& req)
     {
       std::string prompt = req["msg"].value("prompt", std::string(""));
@@ -322,6 +356,7 @@ namespace irods
 
     json step_error(rcComm_t& comm, const json& req)
     {
+      std::cout << "error " << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
@@ -330,12 +365,14 @@ namespace irods
 
     json step_timeout(rcComm_t& comm, const json& req)
     {
+      std::cout << "timeout" << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
       return res;
     }
 
+    // determine file name of persistent state file
     std::string pam_auth_file_name() const
     {
       char *authfilename = getRodsEnvAuthFileName();
@@ -344,6 +381,22 @@ namespace irods
       }
       else {
         return std::string(getenv( "HOME" )) + "/.irods/.irodsA.json";
+      }
+    }
+
+    void save_state_to_file(const json& resp) {
+      std::string file_name(pam_auth_file_name());
+      // open file in 0600 mode
+      int fd = obfiOpenOutFile(file_name.c_str(), 0);
+      if ( fd < 0 ) {
+        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
+      }
+      std::stringstream ss;
+      ss << resp["pstate"] << std::flush;
+      int write_res = obfiWritePw(fd, ss.str().c_str());
+      close(fd);
+      if(write_res < 0 ) {
+        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
       }
     }
 
@@ -360,24 +413,25 @@ namespace irods
         THROW(ec, "failed to save obfuscated password");
       }
       add_pam_exiration(resp);
-      std::string file_name(pam_auth_file_name());
-      std::ofstream file(file_name.c_str());
-      if (file.is_open()) {
-        file << resp["pstate"];
-        file.close();
-      }
-      else {
-        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
-      }
-
+      save_state_to_file(resp);
+      resp[irods_auth::next_operation] = perform_native_auth; 
+      return resp;
+    }
+    
+    json auth_client_perform_native_auth(rcComm_t& comm, const json& req) {
+      // This operation is basically just running the entire native authentication flow
+      // because this is how the PAM authentication plugin has worked historically. This
+      // is done in order to minimize communications with the PAM server as iRODS does
+      // not use proper "sessions".
+      json resp{req};
 
       // The authentication password needs to be removed from the request message as it
       // will send the password over the network without SSL being necessarily enabled.
       resp.erase(irods::AUTH_PASSWORD_KEY);
 
+      static constexpr const char* auth_scheme_native_str = "native";
       rodsEnv env{};
-      
-      std::strncpy(env.rodsAuthScheme, auth_scheme_native, NAME_LEN);
+      std::strncpy(env.rodsAuthScheme, auth_scheme_native_str, NAME_LEN);
       irods_auth::authenticate_client(comm, env, json{});
 
       // If everything completes successfully, the flow is completed and we can
@@ -399,11 +453,58 @@ namespace irods
     }
 
 #ifdef RODS_SERVER
-    int get_ttl(const json & req)
+    json pam_auth_agent_request(rsComm_t& comm, const json& req)
     {
+      json resp{req};
+      if (comm.auth_scheme) {
+        free(comm.auth_scheme);
+      }
+
+      comm.auth_scheme = strdup(pam_interactive_scheme);
+      return resp;
+    } // native_auth_agent_request
+#endif
+
+#ifdef RODS_SERVER
+    int get_int_from_server_config(const json::json_pointer & jptr) const {
+      if(irods::server_properties::instance().map().contains(jptr)) {
+        return irods::server_properties::instance().map().at(jptr).get<int>();
+      }
+      else {
+        return 0;
+      }
+    }
+
+    int get_min_ttl_from_server_config() const {
+      static json::json_pointer jptr("/plugin_configuration/authentication/pam_interactive/password_min_time"_json_pointer);
+      return get_int_from_server_config(jptr);
+    }
+
+    int get_max_ttl_from_server_config() const {
+      static json::json_pointer jptr("/plugin_configuration/authentication/pam_interactive/password_max_time"_json_pointer);
+      return get_int_from_server_config(jptr);
+      
+    }
+
+    void  pam_generate_password(rsComm_t& comm, json& resp) {
+      // Todo: allow TTL in granularity smaller than 3600 seconds
+      // The limit is imposed by the chlUpdateIrodsPamPassword function which accepts TTLs as hours
+      const auto username = resp.at("user_name").get_ref<const std::string&>();
+      // seconds
+      int min_ttl = get_min_ttl_from_server_config();
+      int max_ttl = get_max_ttl_from_server_config();
+      if(min_ttl > 0 && min_ttl < 3600) {
+        // the smallest unit is one hour (accepted by chlUpdateIrodsPamPassword)
+        throw std::range_error("password_min_time is not allowed to be smaller than 3600 seconds");
+      }
+      if(max_ttl > 0 && max_ttl < 3600) {
+        // the smallest unit is one hour (accepted by chlUpdateIrodsPamPassword)
+        throw std::range_error("password_max_time is not allowed to be smaller than 3600 seconds");
+      }
+      // the unit of ttl is hours
       int ttl = 0;
-      if (req.contains(irods::AUTH_TTL_KEY)) {
-        if (const auto& ttl_str = req.at(irods::AUTH_TTL_KEY).get_ref<const std::string&>(); !ttl_str.empty()) {
+      if (resp.contains(irods::AUTH_TTL_KEY)) {
+        if (const auto& ttl_str = resp.at(irods::AUTH_TTL_KEY).get_ref<const std::string&>(); !ttl_str.empty()) {
           try {
             ttl = boost::lexical_cast<int>(ttl_str);
           }
@@ -412,35 +513,30 @@ namespace irods
           }
         }
       }
-      return ttl;
-    }
-#endif
 
-#ifdef RODS_SERVER
-    json pam_auth_agent_request(rsComm_t& comm, const json& req)
-    {
-      json resp{req};
-      const auto username = req.at("user_name").get_ref<const std::string&>();
-      int ttl = get_ttl(req);
+      int ttl_seconds = ttl * 3600;
+      if(min_ttl > 0) {
+        if(ttl_seconds < min_ttl) {
+          ttl_seconds = min_ttl;
+        }
+      }
+      if(max_ttl > 0) {
+        if(ttl_seconds > max_ttl) {
+          ttl_seconds = max_ttl;
+        }
+      }
+      ttl = ttl_seconds / 3600;
+      ttl_seconds = ttl * 3600;
       char password_out[MAX_NAME_LEN]{};
       char* pw_ptr = &password_out[0];
-
       const int ec = chlUpdateIrodsPamPassword(&comm, const_cast<char*>(username.c_str()), ttl, nullptr, &pw_ptr);
       if (ec < 0) {
         THROW(ec, "failed updating iRODS pam password");
       }
       resp["request_result"] = password_out;
+      resp["ttl_seconds"] = ttl_seconds;
+    }
 
-      if (comm.auth_scheme) {
-        free(comm.auth_scheme);
-      }
-
-      comm.auth_scheme = strdup("pam_interactive");
-      return resp;
-    } // native_auth_agent_request
-#endif
-
-#ifdef RODS_SERVER
     json pam_auth_agent_response(rsComm_t& comm, const json& req)
     {
       using log_auth = irods::experimental::log::authentication;
@@ -484,8 +580,12 @@ namespace irods
       auto p = session->pull(resp_str.c_str(), resp_str.size());
 
       json resp{req};
+      if(p.first == Session::State::Authenticated) {
+        pam_generate_password(comm, resp);
+      }
       resp[irods_auth::next_operation] = Session::StateToString(p.first);
       if(p.second.empty() || p.second[0] != '{') {
+        // PAM stack does not return a json string
         if(p.first == Session::State::WaitingPw || p.first == Session::State::Waiting ) {
           std::string prompt = p.second;
           if(prompt.empty()) {
@@ -493,21 +593,28 @@ namespace irods
               prompt = "password";
             }
             else {
-              prompt = "username";
+              prompt = "login";
             }
           }
           std::string path = std::string("/") + prompt;
+          // create the JSON message:
+          // 1. dispaly a prompt
+          // 2. patch the local state with the response
           resp["msg"] = { {"prompt", prompt},
                           {"password", (p.first == Session::State::WaitingPw)},
                           {"patch", {
                             {{"op", "add"}, {"path", path}}}}};
         }
         else {
+          // create the JSON message:
+          // Display the message sent from the server
           std::string path = p.second.empty() ? "/value" : std::string("/") + p.second;
           resp["msg"] = {{"prompt", p.second}};
         }
       }
       else {
+        // PAM stack returns a json string.
+        // we parse it and set the message
         resp["msg"] = nlohmann::json::parse(p.second, nullptr, true);  
       }
       return resp;
