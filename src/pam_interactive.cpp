@@ -229,6 +229,36 @@ namespace irods
       return resp;
     }
 
+    // get default value from local state
+    std::string get_default_value(const json& req) {
+      std::string default_path = req["msg"].value("default_path", std::string());
+      std::string default_value;
+      if(!default_path.empty()) {
+        json::json_pointer jptr(default_path);
+        if(req["pstate"].contains(jptr)) {
+          default_value = req["pstate"].at(jptr).get<std::string>();
+        }
+      }
+      return default_value;
+    }
+
+    bool retrieve_entry(json& req) {
+      // get entry from local store and add the value to resp field
+      if(req["msg"].contains("retrieve")) {
+        std::string retr_path = req["msg"].value("retrieve", std::string(""));
+        if(!retr_path.empty()) {
+        json::json_pointer jptr(retr_path);
+        if(req["pstate"].contains(jptr)) {
+            req["resp"] = req["pstate"].at(jptr).get<std::string>();
+            return true;
+          }
+        }
+        req["resp"] = nullptr;
+        return true; 
+      }
+      return false;
+    }
+
     ///////////////////////////////////////////////
     // state REQUEST
     ///////////////////////////////////////////////
@@ -266,8 +296,7 @@ namespace irods
     ///////////////////////////////////////////////
     // state RUNNING
     ///////////////////////////////////////////////
-    json step_client_running(rcComm_t& comm, const json& req)
-    {
+    json step_client_running(rcComm_t& comm, const json& req) {
       json svr_req{req};
       patch_state(svr_req);
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
@@ -277,8 +306,7 @@ namespace irods
     ///////////////////////////////////////////////
     // state READY
     ///////////////////////////////////////////////
-    json step_client_ready(rcComm_t& comm, const json& req)
-    {
+    json step_client_ready(rcComm_t& comm, const json& req) {
       json svr_req{req};
       patch_state(svr_req);
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
@@ -288,8 +316,7 @@ namespace irods
     ///////////////////////////////////////////////
     // state RESPONSE
     ///////////////////////////////////////////////
-    json step_client_response(rcComm_t& comm, const json& req)
-    {
+    json step_client_response(rcComm_t& comm, const json& req) {
       json svr_req{req};
       patch_state(svr_req);
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;
@@ -305,8 +332,14 @@ namespace irods
     {
       std::string input;
       json svr_req{req};
+      if(retrieve_entry(svr_req)) {
+        svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;  
+        patch_state(svr_req);
+        return irods_auth::request(comm, svr_req);
+      }
+     
       std::string prompt = req["msg"].value("prompt", std::string(""));
-      std::string default_value = req["pstate"].value(prompt, std::string(""));
+      std::string default_value = get_default_value(req);
       if(default_value.empty()) {
         std::cout << prompt << " " << std::flush;
       }
@@ -331,10 +364,15 @@ namespace irods
     //
     // wait for user password input and send the result back to server
     ///////////////////////////////////////////////
-    json step_waiting_pw(rcComm_t& comm, const json& req)
-    {
+    json step_waiting_pw(rcComm_t& comm, const json& req) {
+      json svr_req{req};
+      if(retrieve_entry(svr_req)) {
+        svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_RESPONSE;  
+        patch_state(svr_req);
+        return irods_auth::request(comm, svr_req);
+      }
       std::string prompt = req["msg"].value("prompt", std::string(""));
-      std::string default_value = req["pstate"].value(prompt, std::string(""));
+      std::string default_value = get_default_value(req);
       if(default_value.empty()) {
         std::cout << prompt << " " << std::flush;
       }
@@ -342,7 +380,7 @@ namespace irods
         std::cout << prompt << "[******] " << std::flush;
       }
       std::string pw = get_password_from_client_stdin();
-      json svr_req{req};
+     
       if(pw.empty()) {
         svr_req["resp"] = default_value;
       }
@@ -354,8 +392,7 @@ namespace irods
       return irods_auth::request(comm, svr_req);
     }
 
-    json step_error(rcComm_t& comm, const json& req)
-    {
+    json step_error(rcComm_t& comm, const json& req) {
       std::cout << "error " << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
@@ -363,8 +400,7 @@ namespace irods
       return res;
     }
 
-    json step_timeout(rcComm_t& comm, const json& req)
-    {
+    json step_timeout(rcComm_t& comm, const json& req) {
       std::cout << "timeout" << std::endl;
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
@@ -373,8 +409,7 @@ namespace irods
     }
 
     // determine file name of persistent state file
-    std::string pam_auth_file_name() const
-    {
+    std::string pam_auth_file_name() const {
       char *authfilename = getRodsEnvAuthFileName();
       if(authfilename && *authfilename != '\0') {
         return std::string(authfilename) + ".json";
@@ -400,8 +435,7 @@ namespace irods
       }
     }
 
-    json step_authenticated(rcComm_t& comm, const json& req)
-    {
+    json step_authenticated(rcComm_t& comm, const json& req) {
       static constexpr const char* auth_scheme_native = "native";
       // This operation is basically just running the entire native authentication flow
       // because this is how the PAM authentication plugin has worked historically. This
@@ -444,8 +478,7 @@ namespace irods
       return resp;
     }
 
-    json step_not_authenticated(rcComm_t& comm, const json& req)
-    {
+    json step_not_authenticated(rcComm_t& comm, const json& req) {
       json res{req};
       res[irods_auth::next_operation] = irods_auth::flow_complete;
       comm.loggedIn = 0;
@@ -453,8 +486,7 @@ namespace irods
     }
 
 #ifdef RODS_SERVER
-    json pam_auth_agent_request(rsComm_t& comm, const json& req)
-    {
+    json pam_auth_agent_request(rsComm_t& comm, const json& req) {
       json resp{req};
       if (comm.auth_scheme) {
         free(comm.auth_scheme);
@@ -537,8 +569,7 @@ namespace irods
       resp["ttl_seconds"] = ttl_seconds;
     }
 
-    json pam_auth_agent_response(rsComm_t& comm, const json& req)
-    {
+    json pam_auth_agent_response(rsComm_t& comm, const json& req) {
       using log_auth = irods::experimental::log::authentication;
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
@@ -551,8 +582,7 @@ namespace irods
                                             &host); ec < 0) {
         THROW(ec, "getAndConnRcatHost failed.");
       }
-      if (LOCAL_HOST != host->localFlag)
-      {
+      if (LOCAL_HOST != host->localFlag) {
         const auto disconnect = irods::at_scope_exit{[host]
                                                      {
                                                        rcDisconnect(host->conn);
@@ -602,6 +632,7 @@ namespace irods
           // 2. patch the local state with the response
           resp["msg"] = { {"prompt", prompt},
                           {"password", (p.first == Session::State::WaitingPw)},
+                          {"default_path", path},
                           {"patch", {
                             {{"op", "add"}, {"path", path}}}}};
         }
@@ -622,8 +653,7 @@ namespace irods
 #endif
     
   private:
-    void start_ssl(rcComm_t& comm)
-    {
+    void start_ssl(rcComm_t& comm) {
       // Need to enable SSL here if it is not already being used because the PAM password
       // is sent to the server in the clear.
 #if USE_SSL
@@ -645,8 +675,7 @@ namespace irods
 
 
 extern "C"
-irods::pam_interactive_authentication* plugin_factory(const std::string&, const std::string&)
-{
+irods::pam_interactive_authentication* plugin_factory(const std::string&, const std::string&) {
   return new irods::pam_interactive_authentication{};
 }
 
