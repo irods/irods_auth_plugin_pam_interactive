@@ -253,7 +253,7 @@ namespace irods
             return true;
           }
         }
-        req["resp"] = nullptr;
+        req["resp"] = "";
         return true; 
       }
       return false;
