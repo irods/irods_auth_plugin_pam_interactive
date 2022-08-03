@@ -16,6 +16,9 @@ include_directories(
 include(IrodsExternals)
 include(IrodsCXXCompiler)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(IRODS_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
 
 set(CMAKE_CXX_STANDARD ${IRODS_CXX_STANDARD})
 set(CMAKE_MODULE_LINKER_FLAGS_INIT "-Wl,--enable-new-dtags -Wl,--as-needed -Wl,-z,defs")
@@ -28,9 +31,12 @@ project(irods_auth_interactive_pam
   LANGUAGES CXX
 )
 
+include(UseLibCXX)
+
+
 # include(CheckCCompilerFlag)
 # include(CheckCXXCompilerFlag)
-add_compile_options(-std=c++20)
+# add_compile_options(-std=c++20)
 add_link_options(-lpthread)
 add_link_options(-lc++abi)
 
@@ -147,9 +153,27 @@ target_compile_definitions(
   ${IRODS_COMPILE_DEFINITIONS_PRIVATE}
 )
 
+install(TARGETS irods_auth_plugin-pam_interactive_server
+        LIBRARY
+        DESTINATION "/usr/lib/irods/plugins/auth/"
+)
+
+install(TARGETS irods_auth_plugin-pam_interactive_client
+        LIBRARY
+        DESTINATION "/usr/lib/irods/plugins/auth/"
+)
+
+install(TARGETS pam_handshake_auth_check
+        LIBRARY
+        DESTINATION "/sbin/pam_handshake_auth_check"
+)
+
 include(IrodsCPackPlatform)
 set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam")
 set(CPACK_RPM_PACKAGE_REQUIRES "${IRODS_PACKAGE_DEPENDENCIES_STRING}, irods-runtime = ${IRODS_VERSION}, curl-devel")
 
+set(CPACK_DEBIAN_PACKAGE_NAME "irods-auth-interactive-pam")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "${IRODS_PACKAGE_DEPENDENCIES_STRING},irods-runtime, libcurl4-gnutls-dev")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Stefan Wolfsheimer")
 
 include(CPack)
