@@ -153,27 +153,37 @@ target_compile_definitions(
   ${IRODS_COMPILE_DEFINITIONS_PRIVATE}
 )
 
-install(TARGETS irods_auth_plugin-pam_interactive_server
-        LIBRARY
-        DESTINATION "/usr/lib/irods/plugins/auth/"
-)
-
 install(TARGETS irods_auth_plugin-pam_interactive_client
         LIBRARY
         DESTINATION "/usr/lib/irods/plugins/auth/"
+        COMPONENT client
 )
 
 install(TARGETS pam_handshake_auth_check
         RUNTIME
-        DESTINATION "/usr/lib/irods/plugins/auth/pam_handshake_auth_check"
+        DESTINATION "/usr/lib/irods/plugins/auth"
+        COMPONENT server
+)
+
+install(TARGETS irods_auth_plugin-pam_interactive_server
+        LIBRARY
+        DESTINATION "/usr/lib/irods/plugins/auth/"
+        COMPONENT server
 )
 
 include(IrodsCPackPlatform)
-set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam")
-set(CPACK_RPM_PACKAGE_REQUIRES "${IRODS_PACKAGE_DEPENDENCIES_STRING}, irods-runtime = ${IRODS_VERSION}, curl-devel")
+set(CPACK_PACKAGE_FILE_NAME "irods-auth-interactive-pam")
+set(CPACK_DEB_COMPONENT_INSTALL ON)
+set(CPACK_RPM_COMPONENT_INSTALL ON)
 
-set(CPACK_DEBIAN_PACKAGE_NAME "irods-auth-interactive-pam")
+set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam-server" COMPONENT server)
+set(CPACK_RPM_PACKAGE_NAME "irods-auth-interactive-pam-client" COMPONENT client)
+set(CPACK_RPM_PACKAGE_REQUIRES "${IRODS_PACKAGE_DEPENDENCIES_STRING}, irods-runtime = ${IRODS_VERSION}, curl-devel" )
+
+# set(CPACK_DEBIAN_PACKAGE_NAME "irods-auth-interactive-pam-server" COMPONENT server)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "${IRODS_PACKAGE_DEPENDENCIES_STRING},irods-runtime, libcurl4-gnutls-dev")
+
+# set(CPACK_DEBIAN_PACKAGE_NAME "irods-auth-interactive-pam-client" COMPONENT client)
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Stefan Wolfsheimer")
 
 include(CPack)
