@@ -151,8 +151,11 @@ bool PamHandshake::pam_auth_check_wrapper(const std::string & application,
         {
           close(p_write[0]);
           close(p_read[1]);
-          throw std::invalid_argument((std::string("invalid PAM message type ") +
-                                       std::to_string(code.second)).c_str());
+          throw std::runtime_error(std::string(__FILE__) + std::string(":") +
+                                   std::to_string(__LINE__)  + 
+                                   std::string(" invalid PAM message type ") + std::to_string(code.second) +
+                                   std::string(" executable: ") + application +
+                                   std::string(" --bin --stack ") + pam_service);
         }
       }
       else if(code.first == MSG_DONE)
@@ -171,7 +174,11 @@ bool PamHandshake::pam_auth_check_wrapper(const std::string & application,
       {
         close(p_write[0]);
         close(p_read[1]);
-        throw std::runtime_error(std::string("invalid status ") + std::to_string(code.first));
+        throw std::runtime_error(std::string(__FILE__) + std::string(":") +
+                                 std::to_string(__LINE__)  +
+                                 std::string(" invalid status code ") + std::to_string(code.first) +
+                                 std::string(" executable: ") + application +
+                                 std::string(" --bin --stack ") + pam_service);
       }
     } // while true
     close(p_write[0]);

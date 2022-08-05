@@ -37,7 +37,7 @@
 
 #ifdef RODS_SERVER
 const char PAM_STACK_NAME[] = "irods";
-const char PAM_CHECKER[] = "/sbin/pam_handshake_auth_check";
+const char PAM_CHECKER[] = "/usr/lib/irods/plugins/auth/pam_handshake_auth_check";
 const int SESSION_TIMEOUT = 3600;
 #endif
 
@@ -575,7 +575,6 @@ namespace irods
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
 
       rodsServerHost_t* host = nullptr;
-
       log_auth::trace("connecting to catalog provider");
       if (const int ec = getAndConnRcatHost(&comm, PRIMARY_RCAT,
                                             comm.clientUser.rodsZone,
@@ -599,7 +598,6 @@ namespace irods
 #endif
         return irods_auth::request(*host->conn, req);
       }
-
       auto session = Session::getSingleton(PAM_STACK_NAME,
                                            PAM_CHECKER,
                                            SESSION_TIMEOUT);
@@ -608,7 +606,6 @@ namespace irods
       std::string resp_str(req.value("resp", std::string("")));
 
       auto p = session->pull(resp_str.c_str(), resp_str.size());
-
       json resp{req};
       if(p.first == Session::State::Authenticated) {
         pam_generate_password(comm, resp);

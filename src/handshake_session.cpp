@@ -238,6 +238,7 @@ std::pair<Session::State, std::string> Session::pull(const char * response, std:
     else if(nextMessage.first == State::Ready)
     {
       // should not end here
+      nextMessage.second = "Session::pull ivalid state: Ready";
       transition(State::Error);
     }
   }
@@ -263,6 +264,7 @@ void Session::worker()
 {
   bool result = false;
   bool err = false;
+  std::string what;
   try
   {
     result = pam_auth_check_wrapper(conversation_program,
@@ -273,9 +275,10 @@ void Session::worker()
   }
   catch(const std::exception & ex) 
   {
+    what = std::string(ex.what());
     if(verbose)
     {
-      std::cerr << ex.what() << std::endl;
+      std::cerr << what << std::endl;
     }
     err = true;
   }
@@ -286,6 +289,7 @@ void Session::worker()
     if(err)
     {
       transition(State::Error, false);
+      nextMessage.second.append(what);
     }
     else if(result)
     {

@@ -164,8 +164,8 @@ install(TARGETS irods_auth_plugin-pam_interactive_client
 )
 
 install(TARGETS pam_handshake_auth_check
-        LIBRARY
-        DESTINATION "/sbin/pam_handshake_auth_check"
+        RUNTIME
+        DESTINATION "/usr/lib/irods/plugins/auth/pam_handshake_auth_check"
 )
 
 include(IrodsCPackPlatform)
