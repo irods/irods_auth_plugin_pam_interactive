@@ -39,3 +39,7 @@ RUN wget -qO - https://packages.irods.org/irods-signing-key.asc | apt-key add - 
     apt-get update
 
 RUN apt install -y 'irods-externals*' irods-dev libpam-dev 
+
+COPY build_packages.sh /
+RUN chmod u+x /build_packages.sh
+ENTRYPOINT ["./build_packages.sh"]
