@@ -11,7 +11,7 @@
 #include "irods/irods_pam_auth_object.hpp"
 #include "irods/miscServerFunct.hpp"
 #include "irods/rcConnect.h"
-#include "irods/base64.h"
+#include "irods/base64.hpp"
 
 #include <boost/lexical_cast.hpp>
 #include <fmt/format.h>
@@ -167,7 +167,8 @@ namespace irods
       if(!expire_str.empty()) {
         std::istringstream ss(expire_str);
         std::tm t = {};
-        ss.imbue(std::locale("en_US.UTF-8"));
+        // TODO: Consider using epoch seconds/UTC for checking times. en_US.UTF-8 was chosen for readability, possibly a JSON standard
+        //ss.imbue(std::locale("en_US.UTF-8"));
         ss >> std::get_time(&t, "%Y-%m-%d %H:%M:%S");
         if (ss.fail()) {
           throw std::runtime_error(std::string("failed to parse date time:'") + expire_str + "'");
@@ -498,13 +499,15 @@ namespace irods
 #endif
 
 #ifdef RODS_SERVER
-    int get_int_from_server_config(const json::json_pointer & jptr) const {
-      if(irods::server_properties::instance().map().contains(jptr)) {
-        return irods::server_properties::instance().map().at(jptr).get<int>();
-      }
-      else {
+    int get_int_from_server_config(const json::json_pointer& jptr) const
+    {
+        const auto config_handle = irods::server_properties::instance().map();
+        const auto& config_json = config_handle.get_json();
+        if (const auto& itr = config_json.find(jptr); std::end(config_json) != itr) {
+            return itr->get<int>();
+        }
+
         return 0;
-      }
     }
 
     int get_min_ttl_from_server_config() const {
@@ -601,8 +604,7 @@ namespace irods
       auto session = Session::getSingleton(PAM_STACK_NAME,
                                            PAM_CHECKER,
                                            SESSION_TIMEOUT);
-                               
-                               
+
       std::string resp_str(req.value("resp", std::string("")));
 
       auto p = session->pull(resp_str.c_str(), resp_str.size());
