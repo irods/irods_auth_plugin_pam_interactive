@@ -4,8 +4,8 @@ usage() {
 cat <<_EOF_
 Available options:
 
-    --irods-packages        Path to custom externals packages received via volume mount
-    -h, --help              This message
+    --irods-packages    Path to custom iRODS packages received via volume mount
+    -h, --help          This message
 _EOF_
     exit
 }
