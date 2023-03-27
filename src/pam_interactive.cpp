@@ -503,7 +503,7 @@ namespace irods
     {
         const auto config_handle = irods::server_properties::instance().map();
         const auto& config_json = config_handle.get_json();
-        if (const auto& itr = config_json.find(jptr); std::end(config_json) != itr) {
+        if (const auto itr = config_json.find(jptr); std::end(config_json) != itr) {
             return itr->get<int>();
         }
 
