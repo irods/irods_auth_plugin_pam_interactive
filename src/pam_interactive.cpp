@@ -562,9 +562,9 @@ namespace irods
       }
       ttl = ttl_seconds / 3600;
       ttl_seconds = ttl * 3600;
-      char password_out[MAX_NAME_LEN]{};
+      char password_out[MAX_PASSWORD_LEN+1]{};
       char* pw_ptr = &password_out[0];
-      const int ec = chlUpdateIrodsPamPassword(&comm, const_cast<char*>(username.c_str()), ttl, nullptr, &pw_ptr);
+      const int ec = chlUpdateIrodsPamPassword(&comm, username.c_str(), ttl, nullptr, &pw_ptr, sizeof(password_out));
       if (ec < 0) {
         THROW(ec, "failed updating iRODS pam password");
       }
