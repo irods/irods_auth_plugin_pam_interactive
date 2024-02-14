@@ -88,6 +88,7 @@ target_link_libraries(
   irods_client
   "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_filesystem.so"
   "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_system.so"
+  "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_chrono.so" 
   "${IRODS_EXTERNALS_FULLPATH_FMT}/lib/libfmt.so"
    ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++.so.1
   nlohmann_json::nlohmann_json
@@ -127,6 +128,7 @@ target_link_libraries(
   irods_server
   "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_filesystem.so"
   "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_system.so"
+  "${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_chrono.so"
   "${IRODS_EXTERNALS_FULLPATH_FMT}/lib/libfmt.so"
    ${IRODS_EXTERNALS_FULLPATH_CLANG_RUNTIME}/lib/libc++.so.1
   nlohmann_json::nlohmann_json

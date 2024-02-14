@@ -14,6 +14,7 @@
 #include "irods/base64.hpp"
 
 #include <boost/lexical_cast.hpp>
+#include <boost/chrono.hpp>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
@@ -51,6 +52,8 @@ namespace
   namespace irods_auth = irods::experimental::auth;
   using json = nlohmann::json;
 
+  namespace bchrono = boost::chrono; 
+  
   static std::string get_password_from_client_stdin()
   {
     struct termios tty;
@@ -166,14 +169,21 @@ namespace irods
       std::string expire_str = resp["pstate"].value("__expire__", std::string(""));
       if(!expire_str.empty()) {
         std::istringstream ss(expire_str);
+	
         std::tm t = {};
-        // TODO: Consider using epoch seconds/UTC for checking times. en_US.UTF-8 was chosen for readability, possibly a JSON standard
-        //ss.imbue(std::locale("en_US.UTF-8"));
-        ss >> std::get_time(&t, "%Y-%m-%d %H:%M:%S");
-        if (ss.fail()) {
-          throw std::runtime_error(std::string("failed to parse date time:'") + expire_str + "'");
-        }
-        if(std::difftime(std::mktime(&t), std::time(nullptr)) > 0) {
+        // Using epoch seconds to check expiration 
+	long long int expire_epoch;
+        ss >> expire_epoch;
+	if (expire_epoch <= 0) {
+	  throw std::runtime_error(std::string("failed to parse expiration timestamp:'") + expire_str + "'");
+	}
+	
+	// now time point
+	bchrono::system_clock::time_point tp = bchrono::system_clock::now();
+	
+	// compare epoch timestamps to determine validity session
+	if (bchrono::duration_cast<bchrono::seconds>(tp.time_since_epoch()).count() < expire_epoch ){
+	  
           return true;
         }
       }
@@ -195,9 +205,16 @@ namespace irods
       if(ttl_seconds == 0) {
         ttl_seconds = pam_time_to_live_default;
       }
-      std::time_t expire = std::time(0) + ttl_seconds; 
+
       std::ostringstream ss;
-      ss << std::put_time(std::gmtime(&expire), "%Y-%m-%d %H:%M:%S") << std::flush;
+
+      // now time point
+      bchrono::system_clock::time_point tp = bchrono::system_clock::now();
+      
+      // make expiration timestamp by adding ttl to current timestamp
+      // using boost::chrono durations
+      ss << bchrono::duration_cast<bchrono::seconds>(tp.time_since_epoch()).count() + bchrono::seconds{ttl_seconds}.count() << std::flush;
+      
       resp["pstate"]["__expire__"] = ss.str();
     }
 
