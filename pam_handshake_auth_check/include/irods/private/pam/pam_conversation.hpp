@@ -15,6 +15,7 @@ namespace PamHandshake
                        void *data);
 
   bool pam_auth_check(const std::string & pam_service,
+		      const std::string & username,
                       IPamClient & client,
                       bool verbose);
 

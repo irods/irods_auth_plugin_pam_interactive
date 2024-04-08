@@ -4,6 +4,7 @@
 #include <thread>
 #include <string.h>
 #include <security/pam_appl.h>
+#include <security/pam_modules.h>
 #include <unistd.h>
 #include "irods/private/pam/ipam_client.hpp"
 #include "irods/private/pam/pam_conversation.hpp"
@@ -83,6 +84,7 @@ int PamHandshake::pam_conversation(int n,
 }
 
 bool PamHandshake::pam_auth_check(const std::string & pam_service,
+				  const std::string & username,
                                   PamHandshake::IPamClient & client,
                                   bool verbose)
 {
@@ -95,11 +97,22 @@ bool PamHandshake::pam_auth_check(const std::string & pam_service,
   if(verbose)
   {
     std::cout << "pam_start: " << retval_pam_start << std::endl;
+    std::cout << "username: " << username << std::endl;
   }
   if(retval_pam_start != PAM_SUCCESS)
   {
     throw std::runtime_error("pam_start_error");
   }
+
+  if (!username.empty()){
+    int puser_ret = pam_set_item(pamh, PAM_USER, username.c_str());
+    if (puser_ret != PAM_SUCCESS){
+      throw std::runtime_error("Could not set PAM username");
+    }
+  }
+
+
+  
   const int retval_pam_authenticate = pam_authenticate( pamh, 0 );
   if(verbose)
   {

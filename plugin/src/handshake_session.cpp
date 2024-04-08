@@ -10,9 +10,11 @@ using namespace PamHandshake;
 
 Session::Session(const std::string & _pam_stack_name,
                  const std::string & _conversation_program,
+		 const std::string & _irods_username,
                  bool _verbose)
   : pam_stack_name(_pam_stack_name),
     conversation_program(_conversation_program),
+    irods_username(_irods_username),
     verbose(_verbose),
     nextMessage(std::make_pair(State::Running, "")),
     lastTime(std::time(nullptr)),
@@ -23,6 +25,7 @@ Session::Session(const std::string & _pam_stack_name,
 std::shared_ptr<Session> Session::singletonOp(bool create,
                                               const std::string & pam_stack_name,
                                               const std::string & conversation_program,
+					      const std::string & irods_username,
                                               std::size_t session_timeout, // seconds
                                               bool _verbose)
 {
@@ -35,6 +38,7 @@ std::shared_ptr<Session> Session::singletonOp(bool create,
     {
       instance = std::make_shared<Session>(pam_stack_name,
                                            conversation_program,
+					   irods_username,
                                            _verbose);
     }
   }
@@ -47,19 +51,21 @@ std::shared_ptr<Session> Session::singletonOp(bool create,
 
 std::shared_ptr<Session> Session::getSingleton(const std::string & pam_stack_name,
                                                const std::string & conversation_program,
+					       const std::string & irods_username,
                                                std::size_t session_timeout, // seconds
                                                bool _verbose)
 {
   return Session::singletonOp(true,
                               pam_stack_name,
                               conversation_program,
+			      irods_username,
                               session_timeout,
                               _verbose);
 }
 
 void Session::resetSingleton()
 {
-  Session::singletonOp(false, "", "", 0, false);
+  Session::singletonOp(false, "", "", "", 0, false);
 }
 
 
@@ -266,10 +272,12 @@ void Session::worker()
   std::string what;
   try
   {
+    // make sure that irods username is passed to pam stack
     result = pam_auth_check_wrapper(conversation_program,
                                     pam_stack_name,
                                     *this,
-                                    verbose);
+                                    verbose,
+				    irods_username);
 
   }
   catch(const std::exception & ex) 
