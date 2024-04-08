@@ -88,9 +88,10 @@ static std::pair<int, int> readMessage(int fd, std::string & msg)
 }
 
 bool PamHandshake::pam_auth_check_wrapper(const std::string & application,
-                                         const std::string & pam_service,
-                                         PamHandshake::IPamClient & client,
-                                         bool verbose)
+					  const std::string & pam_service,
+					  PamHandshake::IPamClient & client,
+					  bool verbose,
+					  const std::string & irods_username)
 {
   int p_read[2];
   int p_write[2];
@@ -113,13 +114,13 @@ bool PamHandshake::pam_auth_check_wrapper(const std::string & application,
     close(p_read[1]);
     dup2(p_write[1], STDOUT_FILENO);
     dup2(p_read[0], STDIN_FILENO);
-    execl(application.c_str(), "--bin", "--stack", pam_service.c_str(), nullptr);
+    execl(application.c_str(), "--bin", "--stack", pam_service.c_str(), "--username", irods_username.c_str(), nullptr);
     exit(0);
   }
   else
   {
     close(p_write[1]);
-    close(p_read[0]);
+   close(p_read[0]);
     int fd_read = p_write[0];
     int fd_write = p_read[1];
     int ret = 0;

@@ -620,6 +620,7 @@ namespace irods
       }
       auto session = Session::getSingleton(PAM_STACK_NAME,
                                            PAM_CHECKER,
+					   comm.clientUser.userName,
                                            SESSION_TIMEOUT);
 
       std::string resp_str(req.value("resp", std::string("")));
