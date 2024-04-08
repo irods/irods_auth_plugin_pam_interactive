@@ -40,10 +40,12 @@ namespace PamHandshake
     // Ready -> NotAuthenticated  (worker)
     Session(const std::string & _pam_stack_name = "irods",
             const std::string & _conversation_program = "",
+	    const std::string & _irods_username = "",
             bool _verbose = false);
 
     static std::shared_ptr<Session> getSingleton(const std::string & pam_stack_name="irods",
                                                  const std::string & conversation_program="",
+						 const std::string & _irods_username = "",
                                                  std::size_t session_timeout=3600, // seconds
                                                  bool _verbose=false);
 
@@ -70,11 +72,13 @@ namespace PamHandshake
     static std::shared_ptr<Session> singletonOp(bool create,
                                                 const std::string & pam_stack_name,
                                                 const std::string & conversation_program,
+						const std::string & irods_username,
                                                 std::size_t session_timeout, // seconds
                                                 bool _verbose);
 
     std::string pam_stack_name;
     std::string conversation_program;
+    std::string irods_username;
     bool verbose;
     std::pair<State, std::string> nextMessage;
     std::string nextResponse;
