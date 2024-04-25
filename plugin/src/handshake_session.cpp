@@ -1,6 +1,5 @@
-#include "handshake_session.hpp"
-#include "pam_conversation.hpp"
-#include "auth_check_wrapper.hpp"
+#include "irods/private/pam/handshake_session.hpp"
+#include "irods/private/pam/auth_check_wrapper.hpp"
 #include <functional>
 #include <iostream>
 #include <security/pam_appl.h>

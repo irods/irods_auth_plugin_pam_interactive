@@ -2,8 +2,8 @@
 #include <string>
 #include <utility>
 #include <security/pam_appl.h>
-#include "ipam_client.hpp"
-#include "pam_auth_check_exception.hpp"
+#include "irods/private/pam/ipam_client.hpp"
+#include "irods/private/pam/pam_auth_check_exception.hpp"
 
 namespace PamHandshake
 {

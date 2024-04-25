@@ -1,0 +1,9 @@
+add_library(
+	irods_pam_interactive_common
+	INTERFACE
+)
+target_include_directories(
+	irods_pam_interactive_common
+	INTERFACE
+	"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+)

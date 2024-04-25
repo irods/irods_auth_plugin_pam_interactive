@@ -1,5 +1,5 @@
-#include "auth_check_wrapper.hpp"
-#include "pam_auth_check_exception.hpp"
+#include "irods/private/pam/auth_check_wrapper.hpp"
+#include "irods/private/pam/pam_auth_check_exception.hpp"
 #include <cstdint>
 #include <cstring>
 #include <stdio.h>

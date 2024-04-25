@@ -1,17 +1,17 @@
-#include "irods/authentication_plugin_framework.hpp"
+#include <irods/authentication_plugin_framework.hpp>
 
 #define USE_SSL 1
-#include "irods/sslSockComm.h"
+#include <irods/sslSockComm.h>
 
-#include "irods/icatHighLevelRoutines.hpp"
-#include "irods/irods_at_scope_exit.hpp"
-#include "irods/irods_auth_constants.hpp"
-#include "irods/irods_client_server_negotiation.hpp"
-#include "irods/irods_logger.hpp"
-#include "irods/irods_pam_auth_object.hpp"
-#include "irods/miscServerFunct.hpp"
-#include "irods/rcConnect.h"
-#include "irods/base64.hpp"
+#include <irods/icatHighLevelRoutines.hpp>
+#include <irods/irods_at_scope_exit.hpp>
+#include <irods/irods_auth_constants.hpp>
+#include <irods/irods_client_server_negotiation.hpp>
+#include <irods/irods_logger.hpp>
+#include <irods/irods_pam_auth_object.hpp>
+#include <irods/miscServerFunct.hpp>
+#include <irods/rcConnect.h>
+#include <irods/base64.hpp>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/chrono.hpp>
@@ -27,13 +27,13 @@
 
 #include <openssl/md5.h>
 
-#include "handshake_session.hpp"
+#include "irods/private/pam/handshake_session.hpp"
 
 #ifdef RODS_SERVER
-#include "irods/irods_rs_comm_query.hpp"
-#include "irods/rsAuthCheck.hpp"
-#include "irods/rsAuthRequest.hpp"
-#include "irods/irods_server_properties.hpp"
+#include <irods/irods_rs_comm_query.hpp>
+#include <irods/rsAuthCheck.hpp>
+#include <irods/rsAuthRequest.hpp>
+#include <irods/irods_server_properties.hpp>
 #endif
 
 #ifdef RODS_SERVER
