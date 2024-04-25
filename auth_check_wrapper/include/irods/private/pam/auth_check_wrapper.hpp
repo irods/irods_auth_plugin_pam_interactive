@@ -1,5 +1,5 @@
 #pragma once
-#include "ipam_client.hpp"
+#include "irods/private/pam/ipam_client.hpp"
 #include <string>
 
 namespace PamHandshake

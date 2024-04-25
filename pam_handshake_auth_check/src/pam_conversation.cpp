@@ -5,8 +5,8 @@
 #include <string.h>
 #include <security/pam_appl.h>
 #include <unistd.h>
-#include "ipam_client.hpp"
-#include "pam_conversation.hpp"
+#include "irods/private/pam/ipam_client.hpp"
+#include "irods/private/pam/pam_conversation.hpp"
 
 #define MSG_PAM_CONV 1
 #define MSG_PAM_RESPONSE 2

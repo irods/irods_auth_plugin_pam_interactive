@@ -1,8 +1,8 @@
 /***********************************************************
  * 
  **/
-#include "pam_conversation.hpp"
-#include "auth_check_wrapper.hpp"
+#include "irods/private/pam/pam_conversation.hpp"
+#include "irods/private/pam/auth_check_wrapper.hpp"
 #include <string>
 #include <exception>
 #include <stdexcept>
