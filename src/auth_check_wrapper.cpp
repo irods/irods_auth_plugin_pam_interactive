@@ -1,5 +1,7 @@
 #include "auth_check_wrapper.hpp"
 #include "pam_auth_check_exception.hpp"
+#include <cstdint>
+#include <cstring>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -13,7 +15,7 @@
 static void writeMessage(int fd, int state, int type, const char * msg)
 {
   unsigned char bytes[6];
-  uint32_t n = strlen(msg);
+  std::uint32_t n = static_cast<std::uint32_t>(std::strlen(msg));
   bytes[0] = state;
   bytes[1] = type;
   bytes[2] = n & 0xFF;
