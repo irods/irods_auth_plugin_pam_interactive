@@ -7,5 +7,6 @@ namespace PamHandshake
     bool pam_auth_check_wrapper(const std::string & application,
                                 const std::string & pam_service,
                                 IPamClient & client,
-                                bool verbose);
+                                bool verbose,
+				const std::string & irods_username);
 }
