@@ -191,7 +191,7 @@ namespace irods
     }
 
     // add the expiration time to the persistent state
-    void add_pam_exiration(json & resp) {
+    void add_pam_expiration(json & resp) {
       int ttl_seconds = resp.value<int>("ttl_seconds", 0);
       // make sure that ttl on the client side expires before
       // the entry on the server.
@@ -464,7 +464,7 @@ namespace irods
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
-      add_pam_exiration(resp);
+      add_pam_expiration(resp);
       save_state_to_file(resp);
       resp[irods_auth::next_operation] = perform_native_auth; 
       return resp;
