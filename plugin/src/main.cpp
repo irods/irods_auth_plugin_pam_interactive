@@ -229,25 +229,31 @@ namespace irods
       return false;
     }
 
-    json auth_client_start(rcComm_t& comm, const json& req) {
-      static constexpr const char* auth_scheme_native = "native";
-      json resp{req};
-      initialize_state(resp);
-      if(!check_force_prompt(resp) && is_pam_valid(resp)) {
-        // authenticatation flow is not invoked from icommand other than iinit
-        // and native password is still valid 
-        // use native scheme
-        rodsEnv env{};
-        std::strncpy(env.rodsAuthScheme, auth_scheme_native, NAME_LEN);
-        irods_auth::authenticate_client(comm, env, json{});
-        resp[irods_auth::next_operation] = irods_auth::flow_complete;
+    auto auth_client_start(rcComm_t& comm, const json& req) -> json
+    {
+        static constexpr const char* auth_scheme_native = "native";
+        json resp{req};
+        initialize_state(resp);
+        resp["user_name"] = comm.proxyUser.userName;
+        resp["zone_name"] = comm.proxyUser.rodsZone;
+
+        // The force_password_prompt keyword does not check for an existing password but instead forcibly displays the
+        // authentication prompt(s). This is useful when a client like iinit wants to "reset" the user's authentication
+        // "session" but in general other clients want to use the already-authenticated "session."
+        if (!check_force_prompt(resp) && is_pam_valid(resp)) {
+            // obfGetPw returns 0 if the password is retrieved successfully. Therefore, we do NOT need to
+            // re-authenticate with PAM in this case. This being the case, we conclude that the user has already been
+            // authenticated via PAM with the server. We proceed with steps for native authentication which will use the
+            // stored, limited password.
+            if (const bool need_password = obfGetPw(nullptr); !need_password) {
+                resp[irods_auth::next_operation] = perform_native_auth;
+                return resp;
+            }
+        }
+
+        resp[irods_auth::next_operation] = AUTH_CLIENT_AUTH_REQUEST;
         return resp;
-      }
-      resp["user_name"] = comm.proxyUser.userName;
-      resp["zone_name"] = comm.proxyUser.rodsZone;
-      resp[irods_auth::next_operation] = AUTH_CLIENT_AUTH_REQUEST;
-      return resp;
-    }
+    } // auth_client_start
 
     // get default value from local state
     std::string get_default_value(const json& req) {
