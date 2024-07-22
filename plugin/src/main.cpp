@@ -27,9 +27,9 @@
 
 #include <openssl/md5.h>
 
+#ifdef RODS_SERVER
 #include "irods/private/pam/handshake_session.hpp"
 
-#ifdef RODS_SERVER
 #include <irods/irods_rs_comm_query.hpp>
 #include <irods/rsAuthCheck.hpp>
 #include <irods/rsAuthRequest.hpp>
@@ -83,7 +83,9 @@ namespace irods
 {
   class pam_interactive_authentication : public irods_auth::authentication_base {
   private:
+#ifdef RODS_SERVER
     using Session = PamHandshake::Session;
+#endif
     static constexpr const char* perform_running = "running";
     static constexpr const char* perform_ready = "ready";
     static constexpr const char* perform_waiting = "waiting";
