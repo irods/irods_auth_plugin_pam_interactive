@@ -446,6 +446,9 @@ namespace irods
     }
 
     void save_state_to_file(const json& resp) {
+
+      json pstate{ {"__expire__", resp["pstate"].value("__expire__", "") } };
+
       std::string file_name(pam_auth_file_name());
       // open file in 0600 mode
       int fd = obfiOpenOutFile(file_name.c_str(), 0);
@@ -453,7 +456,7 @@ namespace irods
         throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
       }
       std::stringstream ss;
-      ss << resp["pstate"] << std::flush;
+      ss << pstate << std::flush;
       int write_res = obfiWritePw(fd, ss.str().c_str());
       close(fd);
       if(write_res < 0 ) {
