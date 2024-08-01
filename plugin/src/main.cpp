@@ -13,7 +13,9 @@
 #include <irods/rcConnect.h>
 #include <irods/base64.hpp>
 
+#include <boost/filesystem.hpp>
 #include <boost/lexical_cast.hpp>
+
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
@@ -31,15 +33,15 @@
 #ifdef RODS_SERVER
 #include "irods/private/pam/handshake_session.hpp"
 
+#include <irods/irods_default_paths.hpp>
 #include <irods/irods_rs_comm_query.hpp>
+#include <irods/irods_server_properties.hpp>
 #include <irods/rsAuthCheck.hpp>
 #include <irods/rsAuthRequest.hpp>
-#include <irods/irods_server_properties.hpp>
 #endif
 
 #ifdef RODS_SERVER
 const char PAM_STACK_NAME[] = "irods";
-const char PAM_CHECKER[] = "/usr/lib/irods/plugins/auth/pam_handshake_auth_check";
 const int SESSION_TIMEOUT = 3600;
 #endif
 
@@ -76,6 +78,16 @@ namespace
     }
     return new_password;
   } // get_password_from_client_stdin
+
+#ifdef RODS_SERVER
+    namespace fs = boost::filesystem;
+    auto get_pam_checker_program() -> const fs::path&
+    {
+        static const auto pam_checker{
+            irods::get_irods_default_plugin_directory() / "auth" / "pam_handshake_auth_check"};
+        return pam_checker;
+    } // get_pam_checker_program
+#endif // RODS_SERVER
 } // anonymous namespace
 
 namespace irods
@@ -628,10 +640,8 @@ namespace irods
 #endif
         return irods_auth::request(*host->conn, req);
       }
-      auto session = Session::getSingleton(PAM_STACK_NAME,
-                                           PAM_CHECKER,
-					   comm.clientUser.userName,
-                                           SESSION_TIMEOUT);
+      auto session = Session::getSingleton(
+          PAM_STACK_NAME, get_pam_checker_program().c_str(), comm.clientUser.userName, SESSION_TIMEOUT);
 
       std::string resp_str(req.value("resp", std::string("")));
 
