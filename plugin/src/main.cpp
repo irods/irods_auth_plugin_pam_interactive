@@ -14,14 +14,15 @@
 #include <irods/base64.hpp>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/chrono.hpp>
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <chrono>
 #include <string>
+
 #include <termios.h>
 #include <unistd.h>
 
@@ -52,8 +53,6 @@ namespace
   namespace irods_auth = irods::experimental::auth;
   using json = nlohmann::json;
 
-  namespace bchrono = boost::chrono; 
-  
   static std::string get_password_from_client_stdin()
   {
     struct termios tty;
@@ -181,10 +180,10 @@ namespace irods
 	}
 	
 	// now time point
-	bchrono::system_clock::time_point tp = bchrono::system_clock::now();
+	std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
 	
 	// compare epoch timestamps to determine validity session
-	if (bchrono::duration_cast<bchrono::seconds>(tp.time_since_epoch()).count() < expire_epoch ){
+	if (std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count() < expire_epoch ){
 	  
           return true;
         }
@@ -211,11 +210,11 @@ namespace irods
       std::ostringstream ss;
 
       // now time point
-      bchrono::system_clock::time_point tp = bchrono::system_clock::now();
+      std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
       
       // make expiration timestamp by adding ttl to current timestamp
-      // using boost::chrono durations
-      ss << bchrono::duration_cast<bchrono::seconds>(tp.time_since_epoch()).count() + bchrono::seconds{ttl_seconds}.count() << std::flush;
+      // using std::chrono durations
+      ss << std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count() + std::chrono::seconds{ttl_seconds}.count() << std::flush;
       
       resp["pstate"]["__expire__"] = ss.str();
     }

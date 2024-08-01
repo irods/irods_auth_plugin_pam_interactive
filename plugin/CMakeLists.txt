@@ -14,7 +14,6 @@ foreach(plugin_variant IN ITEMS client server)
 		irods_plugin_dependencies
 		"${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_filesystem.so"
 		"${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_system.so"
-		"${IRODS_EXTERNALS_FULLPATH_BOOST}/lib/libboost_chrono.so" 
 		nlohmann_json::nlohmann_json
 		OpenSSL::Crypto
 		fmt::fmt
