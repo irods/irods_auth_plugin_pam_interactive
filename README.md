@@ -48,3 +48,16 @@ Password:
 ```
 
 If "Password" is entered correctly, the user will be authenticated with iRODS, just like `pam_password`. The "Password" prompt is coming from the `pam_unix` module. For more information about this module, see the documentation in **man pam_unix**, or [https://linux.die.net/man/8/pam_unix](https://linux.die.net/man/8/pam_unix).
+
+## Logging
+
+The server-side plugin includes a logging category which can be configured in `server_config.json` under the `log_level` section like so:
+```javascript
+"log_level": {
+    // ... Other Log Categories ...
+
+    "pam_interactive_auth_plugin": "info",
+
+    // ... Other Log Categories ...
+},
+```
