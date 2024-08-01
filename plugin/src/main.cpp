@@ -31,6 +31,7 @@
 
 #ifdef RODS_SERVER
 #include "irods/private/pam/handshake_session.hpp"
+#include "irods/private/pam/pam_interactive_plugin_logging_category.hpp"
 
 #include <irods/irods_default_paths.hpp>
 #include <irods/irods_rs_comm_query.hpp>
@@ -50,7 +51,6 @@ void setSessionSignatureClientside( char* _sig );
 
 namespace
 {
-  using log_auth = irods::experimental::log::authentication;
   namespace irods_auth = irods::experimental::auth;
   using json = nlohmann::json;
 
@@ -79,7 +79,10 @@ namespace
   } // get_password_from_client_stdin
 
 #ifdef RODS_SERVER
+    // Only define log_pam for server-side plugin because clients should not attempt to write to the server log.
+    using log_pam = irods::experimental::log::logger<pam_interactive_auth_plugin_logging_category>;
     namespace fs = boost::filesystem;
+
     auto get_pam_checker_program() -> const fs::path&
     {
         static const auto pam_checker{
@@ -538,14 +541,19 @@ namespace irods
     }
 
 #ifdef RODS_SERVER
-    json pam_auth_agent_request(rsComm_t& comm, const json& req) {
-      json resp{req};
-      if (comm.auth_scheme) {
-        free(comm.auth_scheme);
-      }
+    auto pam_auth_agent_request(rsComm_t& comm, const json& req) -> json
+    {
+        constexpr const char* CFG_LOG_LEVEL_CATEGORY_PAM_INTERACTIVE_AUTH_PLUGIN_KW = "pam_interactive_auth_plugin";
+        log_pam::set_level(
+            irods::experimental::log::get_level_from_config(CFG_LOG_LEVEL_CATEGORY_PAM_INTERACTIVE_AUTH_PLUGIN_KW));
 
-      comm.auth_scheme = strdup(pam_interactive_scheme);
-      return resp;
+        json resp{req};
+        if (comm.auth_scheme) {
+            free(comm.auth_scheme);
+        }
+
+        comm.auth_scheme = strdup(pam_interactive_scheme);
+        return resp;
     } // native_auth_agent_request
 #endif
 
@@ -624,12 +632,11 @@ namespace irods
     }
 
     json pam_auth_agent_response(rsComm_t& comm, const json& req) {
-      using log_auth = irods::experimental::log::authentication;
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
 
       rodsServerHost_t* host = nullptr;
-      log_auth::trace("connecting to catalog provider");
+      log_pam::trace("Connecting to catalog service provider");
       if (const int ec = getAndConnRcatHost(&comm, PRIMARY_RCAT,
                                             comm.clientUser.rodsZone,
                                             &host); ec < 0) {
@@ -642,7 +649,7 @@ namespace irods
                                                        host->conn = nullptr;
                                                      }
         };
-        log_auth::trace("redirecting call to CSP");
+        log_pam::trace("Redirecting call to catalog service provider");
         // Need to enable SSL here if it is not already being used because sensitive PAM information is forwarded to
         // to the provider in the clear.
         // clang-format off
