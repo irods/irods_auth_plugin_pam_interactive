@@ -111,14 +111,6 @@ namespace irods
     static constexpr const char* perform_not_authenticated = "not_authenticated";
     static constexpr const char* perform_native_auth = "native_auth";
    
-    //offset between the TTL in the database and the expiration time in the local json document
-    static constexpr const int pam_time_to_live_offset = 60;
-
-    // pam entry in json document is valid for this amount of seconds
-    // this value can be overwritten with the --ttl option of iinit
-    // and the password min time if the server_config.json
-    static constexpr const int pam_time_to_live_default = 3600;
-
     static constexpr const char* pam_interactive_scheme = "pam_interactive";
 
   public:
@@ -207,6 +199,14 @@ namespace irods
 
     // add the expiration time to the persistent state
     void add_pam_expiration(json & resp) {
+        // offset between the TTL in the database and the expiration time in the local json document
+        constexpr int pam_time_to_live_offset = 60;
+
+        // pam entry in json document is valid for this amount of seconds
+        // this value can be overwritten with the --ttl option of iinit
+        // and the password min time if the server_config.json
+        constexpr int pam_time_to_live_default = 3600;
+
       int ttl_seconds = resp.value<int>("ttl_seconds", 0);
       // make sure that ttl on the client side expires before
       // the entry on the server.
@@ -558,79 +558,6 @@ namespace irods
 #endif
 
 #ifdef RODS_SERVER
-    int get_int_from_server_config(const json::json_pointer& jptr) const
-    {
-        const auto config_handle = irods::server_properties::instance().map();
-        const auto& config_json = config_handle.get_json();
-        if (const auto itr = config_json.find(jptr); std::end(config_json) != itr) {
-            return itr->get<int>();
-        }
-
-        return 0;
-    }
-
-    int get_min_ttl_from_server_config() const {
-      static json::json_pointer jptr("/plugin_configuration/authentication/pam_interactive/password_min_time"_json_pointer);
-      return get_int_from_server_config(jptr);
-    }
-
-    int get_max_ttl_from_server_config() const {
-      static json::json_pointer jptr("/plugin_configuration/authentication/pam_interactive/password_max_time"_json_pointer);
-      return get_int_from_server_config(jptr);
-      
-    }
-
-    void  pam_generate_password(rsComm_t& comm, json& resp) {
-      // Todo: allow TTL in granularity smaller than 3600 seconds
-      // The limit is imposed by the chlUpdateIrodsPamPassword function which accepts TTLs as hours
-      const auto username = resp.at("user_name").get_ref<const std::string&>();
-      // seconds
-      int min_ttl = get_min_ttl_from_server_config();
-      int max_ttl = get_max_ttl_from_server_config();
-      if(min_ttl > 0 && min_ttl < 3600) {
-        // the smallest unit is one hour (accepted by chlUpdateIrodsPamPassword)
-        throw std::range_error("password_min_time is not allowed to be smaller than 3600 seconds");
-      }
-      if(max_ttl > 0 && max_ttl < 3600) {
-        // the smallest unit is one hour (accepted by chlUpdateIrodsPamPassword)
-        throw std::range_error("password_max_time is not allowed to be smaller than 3600 seconds");
-      }
-      // the unit of ttl is hours
-      int ttl = 0;
-      if (resp.contains(irods::AUTH_TTL_KEY)) {
-        if (const auto& ttl_str = resp.at(irods::AUTH_TTL_KEY).get_ref<const std::string&>(); !ttl_str.empty()) {
-          try {
-            ttl = boost::lexical_cast<int>(ttl_str);
-          }
-          catch (const boost::bad_lexical_cast& e) {
-            THROW(SYS_INVALID_INPUT_PARAM, fmt::format("invalid TTL [{}]", ttl_str));
-          }
-        }
-      }
-
-      int ttl_seconds = ttl * 3600;
-      if(min_ttl > 0) {
-        if(ttl_seconds < min_ttl) {
-          ttl_seconds = min_ttl;
-        }
-      }
-      if(max_ttl > 0) {
-        if(ttl_seconds > max_ttl) {
-          ttl_seconds = max_ttl;
-        }
-      }
-      ttl = ttl_seconds / 3600;
-      ttl_seconds = ttl * 3600;
-      char password_out[MAX_PASSWORD_LEN+1]{};
-      char* pw_ptr = &password_out[0];
-      const int ec = chlUpdateIrodsPamPassword(&comm, username.c_str(), ttl, nullptr, &pw_ptr, sizeof(password_out));
-      if (ec < 0) {
-        THROW(ec, "failed updating iRODS pam password");
-      }
-      resp["request_result"] = password_out;
-      resp["ttl_seconds"] = ttl_seconds;
-    }
-
     json pam_auth_agent_response(rsComm_t& comm, const json& req) {
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
@@ -679,8 +606,34 @@ namespace irods
 
       auto p = session->pull(resp_str.c_str(), resp_str.size());
       json resp{req};
-      if(p.first == Session::State::Authenticated) {
-        pam_generate_password(comm, resp);
+      if (p.first == Session::State::Authenticated) {
+          log_pam::trace("Generating random password for iRODS");
+          int ttl = 0;
+          if (req.contains(irods::AUTH_TTL_KEY)) {
+              if (const auto& ttl_str = req.at(irods::AUTH_TTL_KEY).get_ref<const std::string&>(); !ttl_str.empty()) {
+                  try {
+                      ttl = boost::lexical_cast<int>(ttl_str);
+                      log_pam::trace("{}:{} - TTL value: [{}]", __func__, __LINE__, ttl);
+                  }
+                  catch (const boost::bad_lexical_cast& e) {
+                      THROW(SYS_INVALID_INPUT_PARAM, fmt::format("invalid TTL [{}]", ttl_str));
+                  }
+              }
+          }
+
+          const auto& username = req.at("user_name").get_ref<const std::string&>();
+
+          // Plus 1 for null terminator.
+          std::array<char, MAX_PASSWORD_LEN + 1> password_out{};
+          char* password_ptr = password_out.data();
+          const int ec =
+              chlUpdateIrodsPamPassword(&comm, username.c_str(), ttl, nullptr, &password_ptr, password_out.size());
+          if (ec < 0) {
+              THROW(ec, "failed updating iRODS pam password");
+          }
+          resp["request_result"] = password_out.data();
+          // TODO(#38): Need to check for overflows here. In fact, this whole thing needs to be looked at.
+          resp["ttl_seconds"] = ttl * 3600;
       }
       resp[irods_auth::next_operation] = Session::StateToString(p.first);
       if(p.second.empty() || p.second[0] != '{') {
