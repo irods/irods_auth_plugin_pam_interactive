@@ -43,6 +43,16 @@ add_subdirectory(auth_check_wrapper)
 add_subdirectory(pam_handshake_auth_check)
 add_subdirectory(plugin)
 
+# Install the test file(s) alongside the server package.
+install(
+	FILES
+	${CMAKE_SOURCE_DIR}/packaging/test_irods_auth_plugin_pam_interactive.py
+	DESTINATION ${IRODS_HOME_DIRECTORY}/scripts/irods/test
+	PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+	COMPONENT
+	"${project_component_part}-server"
+)
+
 set(PLUGIN_PACKAGE_NAME "irods-auth-plugin-pam-interactive")
 
 include(IrodsCPackCommon)
@@ -59,12 +69,14 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The integrated Rule-Oriented Data System"
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
+set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/packaging/postinst;")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 
 set(CPACK_RPM_COMPONENT_INSTALL ON)
 set(CPACK_RPM_PACKAGE_LICENSE "BSD-3-Clause")
 set(CPACK_RPM_PACKAGE_AUTOREQ 0)
 set(CPACK_RPM_PACKAGE_AUTOPROV 0)
+set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/postinst")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
 
 string(TOUPPER "${project_component_part}-client" irods_plugin_package_client_component)
