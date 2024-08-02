@@ -61,3 +61,14 @@ The server-side plugin includes a logging category which can be configured in `s
     // ... Other Log Categories ...
 },
 ```
+
+## Testing
+
+Running the tests for this plugin should be familiar to those who have run tests for other iRODS plugins. This repository provides a test hook which is used by the iRODS Testing Environment. You can read about how to run plugin tests in the testing environment here: [https://github.com/irods/irods_testing_environment/?tab=readme-ov-file#run-irods-plugin-tests](https://github.com/irods/irods_testing_environment/?tab=readme-ov-file#run-irods-plugin-tests) Please note that using the `--use-ssl` option with the testing environment could cause tests to be skipped, so, as usual, please be mindful of which options are being used when running tests.
+
+In order to run tests aside from the tools provided by the testing environment, one can use the `run_tests.py` script provided by the iRODS server package:
+```bash
+python3 scripts/run_tests.py --run_specific_test test_irods_auth_plugin_pam_interactive
+```
+
+Use the `--help` option for `run_tests.py` to learn about other options. Please note that the test files are installed with the server package produced by this repository so it is assumed that a packaged installation is being used. If not, make sure that the test files in the `packaging` directory are placed alongside the other iRODS test files (for default packaged installations, this should be `/var/lib/irods/scripts/irods/test`).
