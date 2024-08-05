@@ -27,6 +27,10 @@ SSL is required to be configured for both the server and the client, even if the
 
 Set the `irods_authentication_scheme` in the client environment to `pam_interactive`.
 
+## Configuration
+
+This plugin uses the standard set of authentication configurations found in `R_GRID_CONFIGURATION`. You can read about these configurations here: [https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration](https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration)
+
 ### Example implementation: Replacement for `pam_password` authentication
 
 This plugin can be used as a drop-in replacement for `pam_password` (with the exception of some differing prompts). Here's how to set it up.
