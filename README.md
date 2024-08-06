@@ -21,15 +21,42 @@ make package
 
 This project uses a "build hook" which allows the [iRODS Development Environment](https://github.com/irods/irods_development_environment) to build packages in the usual manner. Please see the instructions for building plugins with the development environment: [https://github.com/irods/irods_development_environment?tab=readme-ov-file#how-to-build-an-irods-plugin](https://github.com/irods/irods_development_environment?tab=readme-ov-file#how-to-build-an-irods-plugin)
 
-## Usage
+## Configuration
 
-SSL is required to be configured for both the server and the client, even if the iRODS server does not require its use. More information about configuring iRODS to use SSL can be found here: [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#server-ssl-setup](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#server-ssl-setup)
+### Server-side configuration
+
+#### Require TLS/SSL
+
+It is **highly recommended** that TLS/SSL be required in the server when using this plugin for authentication. More information about configuring iRODS to use TLS/SSL can be found here: [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#server-ssl-setup](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#server-ssl-setup)
+
+#### `R_GRID_CONFIGURATION` for TTL
+
+This plugin uses the standard set of authentication configurations found in `R_GRID_CONFIGURATION` for configuring Time-To-Live (TTL) on authenticated "sessions". You can read about these configurations here: [https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration](https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration)
+
+#### `server_config.json` configuration: `insecure_mode`
+
+`insecure_mode` gives the iRODS administrator the ability to allow for non-TLS/SSL-enabled communications between the client and the server for authentications using `pam_interactive`. TLS/SSL is required by default when using this plugin because sensitive user information is sent over the network to communicate with the PAM service via the catalog service provider. **It is highly recommended to leave this configuration option at its default value of `false`.** The configuration option has been introduced for demo and testing purposes.
+
+If the value is set to `true` and the user attempting to authenticate using this plugin does not have TLS/SSL enabled in the client-server communications, it is allowed, and a warning message is written to the server log to remind the administrator that sensitive user information is being sent over the network without encryption. If the value is set to `false`, a `SYS_NOT_ALLOWED` error will be returned if the user attempting to authenticate using this plugin does not have TLS/SSL enabled in the client-server communications. In the absence of this configuration, a default value of `false` is used.
+
+Here is how to configure `insecure_mode`:
+```javascript
+"plugin_configuration": {
+    "authentication": {
+        "pam_interactive": {
+            "insecure_mode": false
+        }
+    }
+}
+```
+
+### Client-side configuration
 
 Set the `irods_authentication_scheme` in the client environment to `pam_interactive`.
 
-## Configuration
+The client environment should be configured to use TLS/SSL if the server requires TLS/SSL. More information about configuring the iRODS client environment to use TLS/SSL can be found here: [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup)
 
-This plugin uses the standard set of authentication configurations found in `R_GRID_CONFIGURATION`. You can read about these configurations here: [https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration](https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration)
+## Usage
 
 ### Example implementation: Replacement for `pam_password` authentication
 
