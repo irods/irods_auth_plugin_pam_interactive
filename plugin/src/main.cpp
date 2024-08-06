@@ -1,7 +1,5 @@
 #include <irods/authentication_plugin_framework.hpp>
 
-#include <irods/sslSockComm.h>
-
 #include <irods/icatHighLevelRoutines.hpp>
 #include <irods/irods_at_scope_exit.hpp>
 #include <irods/irods_auth_constants.hpp>
@@ -27,12 +25,11 @@
 #include <termios.h>
 #include <unistd.h>
 
-#include <openssl/md5.h>
-
 #ifdef RODS_SERVER
 #include "irods/private/pam/handshake_session.hpp"
 #include "irods/private/pam/pam_interactive_plugin_logging_category.hpp"
 
+#include <irods/irods_configuration_keywords.hpp>
 #include <irods/irods_default_paths.hpp>
 #include <irods/irods_rs_comm_query.hpp>
 #include <irods/irods_server_properties.hpp>
@@ -244,7 +241,6 @@ namespace irods
 
     auto auth_client_start(rcComm_t& comm, const json& req) -> json
     {
-        static constexpr const char* auth_scheme_native = "native";
         json resp{req};
         initialize_state(resp);
         resp["user_name"] = comm.proxyUser.userName;
@@ -302,20 +298,6 @@ namespace irods
     // state REQUEST
     ///////////////////////////////////////////////
     json pam_auth_client_request(rcComm_t& comm, const json& req) {
-        // Need to enable SSL here if it is not already being used because sensitive PAM information is sent to the
-        // server in the clear.
-        const bool using_ssl = (irods::CS_NEG_USE_SSL == comm.negotiation_results);
-        const auto end_ssl_if_we_enabled_it = irods::at_scope_exit{[&comm, using_ssl] {
-            if (!using_ssl) {
-                sslEnd(&comm);
-            }
-        }};
-
-        if (!using_ssl) {
-            if (const int ec = sslStart(&comm); ec < 0) {
-                THROW(ec, "failed to enable SSL");
-            }
-        }
       json svr_req{req};
       svr_req[irods_auth::next_operation] = AUTH_AGENT_AUTH_REQUEST;
       auto res = irods_auth::request(comm, svr_req);
@@ -491,7 +473,6 @@ namespace irods
     }
 
     json step_authenticated(rcComm_t& comm, const json& req) {
-      static constexpr const char* auth_scheme_native = "native";
       // This operation is basically just running the entire native authentication flow
       // because this is how the PAM authentication plugin has worked historically. This
       // is done in order to minimize communications with the PAM server as iRODS does
@@ -515,7 +496,7 @@ namespace irods
       json resp{req};
 
       // The authentication password needs to be removed from the request message as it
-      // will send the password over the network without SSL being necessarily enabled.
+      // will send the password over the network without TLS/SSL being necessarily enabled.
       resp.erase(irods::AUTH_PASSWORD_KEY);
 
       static constexpr const char* auth_scheme_native_str = "native";
@@ -547,6 +528,18 @@ namespace irods
         log_pam::set_level(
             irods::experimental::log::get_level_from_config(CFG_LOG_LEVEL_CATEGORY_PAM_INTERACTIVE_AUTH_PLUGIN_KW));
 
+        if (irods::CS_NEG_USE_SSL != comm.negotiation_results) {
+            if (require_secure_communications()) {
+                THROW(SYS_NOT_ALLOWED,
+                      "Client communications with this server are not secure and this authentication plugin is "
+                      "configured to require TLS/SSL communication. Authentication is not allowed unless this server is "
+                      "configured to require TLS/SSL in order to prevent leaking sensitive user information.");
+            }
+            log_pam::warn("Client communications with this server are not secure, and sensitive user information is "
+                          "being communicated over the network in an unencrypted manner. Configure this server to "
+                          "require TLS/SSL to prevent security leaks.");
+        }
+
         json resp{req};
         if (comm.auth_scheme) {
             free(comm.auth_scheme);
@@ -558,7 +551,20 @@ namespace irods
 #endif
 
 #ifdef RODS_SERVER
-    json pam_auth_agent_response(rsComm_t& comm, const json& req) {
+    auto pam_auth_agent_response(rsComm_t& comm, const json& req) -> json
+    {
+        if (irods::CS_NEG_USE_SSL != comm.negotiation_results) {
+            if (require_secure_communications()) {
+                THROW(SYS_NOT_ALLOWED,
+                      "Client communications with this server are not secure and this authentication plugin is "
+                      "configured to require TLS/SSL communication. Authentication is not allowed unless this server is "
+                      "configured to require TLS/SSL in order to prevent leaking sensitive user information.");
+            }
+            log_pam::warn("Client communications with this server are not secure, and sensitive user information is "
+                          "being communicated over the network in an unencrypted manner. Configure this server to "
+                          "require TLS/SSL to prevent security leaks.");
+        }
+
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
 
@@ -577,25 +583,17 @@ namespace irods
                                                      }
         };
         log_pam::trace("Redirecting call to catalog service provider");
-        // Need to enable SSL here if it is not already being used because sensitive PAM information is forwarded to
-        // to the provider in the clear.
-        // clang-format off
-        const bool using_ssl = (0 == std::strncmp(
-            irods::CS_NEG_USE_SSL.c_str(),
-            host->conn->negotiation_results,
-            MAX_NAME_LEN));
-        // clang-format on
-
-        const auto end_ssl_if_we_enabled_it = irods::at_scope_exit{[host, using_ssl] {
-            if (!using_ssl) {
-                sslEnd(host->conn);
+        if (irods::CS_NEG_USE_SSL != host->conn->negotiation_results) {
+            if (require_secure_communications()) {
+                THROW(SYS_NOT_ALLOWED,
+                      "Server-to-server communications with the catalog service provider server are not secure and "
+                      "this authentication plugin is configured to require TLS/SSL communication. Authentication is "
+                      "not allowed unless this server is configured to require TLS/SSL in order to prevent leaking "
+                      "sensitive user information.");
             }
-        }};
-
-        if (!using_ssl) {
-            if (const int ec = sslStart(host->conn); ec < 0) {
-                THROW(ec, "failed to enable SSL");
-            }
+            log_pam::warn("Server-to-server communications with the catalog service provider server are not secure, "
+                          "and sensitive user information is being communicated over the network in an unencrypted "
+                          "manner. Configure this server to require TLS/SSL to prevent security leaks.");
         }
         return irods_auth::request(*host->conn, req);
       }
@@ -672,6 +670,37 @@ namespace irods
       }
       return resp;
     }
+
+    static auto require_secure_communications() -> bool
+    {
+        try {
+            // TODO(irods/irods#7937): We can use irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION once its value is not "auth".
+            constexpr const char* KW_CFG_PLUGIN_TYPE_AUTHENTICATION = "authentication";
+            constexpr const char* KW_CFG_PAM_INTERACTIVE_INSECURE_MODE = "insecure_mode";
+            // Return the negation of the configuration's value because the configure is "insecure_mode", but this
+            // function is named "require_secure_communications", which is the opposite.
+            return !irods::get_server_property<const bool>(
+                irods::configuration_parser::key_path_t{
+                    irods::KW_CFG_PLUGIN_CONFIGURATION,
+                    KW_CFG_PLUGIN_TYPE_AUTHENTICATION,
+                    irods::pam_interactive_authentication::pam_interactive_scheme,
+                    KW_CFG_PAM_INTERACTIVE_INSECURE_MODE});
+        }
+        catch (const irods::exception& e) {
+            if (KEY_NOT_FOUND == e.code()) {
+                // If the plugin configuration is not set, default to requiring secure communications.
+                return true;
+            }
+
+            // Re-throw for any other error.
+            throw;
+        }
+        catch (const json::exception e) {
+            THROW(CONFIGURATION_ERROR,
+                fmt::format("Error occurred while attempting to get the value of server configuration "
+                            "[plugin_configuration.authentication.pam_interactive.insecure_mode]: {}", e.what()));
+        }
+    } // require_secure_communications
 #endif
   }; // class pam_authentication
 } // namespace irods
