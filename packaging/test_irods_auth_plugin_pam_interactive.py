@@ -1,19 +1,21 @@
 from __future__ import print_function
 
 import copy
+import json
 import os
 import unittest
 
 from . import session
 from .. import lib
+from .. import paths
 from .. import test
 from ..configuration import IrodsConfig
 from ..controller import IrodsController
 from ..core_file import temporary_core_file
 
 
-@unittest.skipIf(test.settings.USE_SSL, 'SSL is set up in these tests, so just skip if SSL is enabled already.')
-@unittest.skipIf(test.settings.RUN_IN_TOPOLOGY, 'SSL configuration cannot be applied to all servers from the tests.')
+@unittest.skipIf(test.settings.USE_SSL, 'TLS/SSL is set up in these tests, so just skip if SSL is enabled already.')
+@unittest.skipIf(test.settings.RUN_IN_TOPOLOGY, 'TLS/SSL configuration cannot be applied to all servers from the tests.')
 class test_configurations(unittest.TestCase):
 	plugin_name = IrodsConfig().default_rule_engine_plugin
 
@@ -667,3 +669,233 @@ class test_configurations(unittest.TestCase):
 
 			self.admin.assert_icommand(
 				['iadmin', 'set_grid_configuration', self.configuration_namespace, max_time_option_name, original_max_time])
+
+	def test_authenticating_with_insecure_mode_in_any_configuration_succeeds_when_ssl_is_enabled(self):
+		IrodsController().stop()
+
+		auth_session_env_backup = copy.deepcopy(self.auth_session.environment_file_contents)
+		admin_session_env_backup = copy.deepcopy(self.admin.environment_file_contents)
+		try:
+			service_account_environment_file_path = os.path.join(
+				os.path.expanduser('~'), '.irods', 'irods_environment.json')
+			with lib.file_backed_up(service_account_environment_file_path):
+				# Configure the admin and test sessions to be TLS/SSL enabled.
+				client_update = test_configurations.make_dict_for_ssl_client_environment(
+					self.server_key_path, self.chain_pem_path, self.dhparams_pem_path)
+
+				lib.update_json_file_from_dict(service_account_environment_file_path, client_update)
+
+				self.admin.environment_file_contents.update(client_update)
+
+				client_update['irods_authentication_scheme'] = self.authentication_scheme
+				self.auth_session.environment_file_contents.update(client_update)
+
+				with temporary_core_file() as core:
+					# Configure the server to require TLS/SSL.
+					core.add_rule(test_configurations.get_pep_for_ssl(self.plugin_name))
+
+					IrodsController().start()
+
+					server_config_path = paths.server_config_path()
+					with lib.file_backed_up(server_config_path):
+						# Get the server_config contents so that we can manipulate them.
+						with open(server_config_path) as f:
+							server_config = json.load(f)
+
+						with self.subTest('insecure_mode = True'):
+							# Set the insecure_mode value to true in the server configuration. In this way, we can test
+							# the configuration value being true, which would allow non-TLS/SSL enabled authentications.
+							server_config['plugin_configuration']['authentication']['pam_interactive'] = {
+								'insecure_mode': True
+							}
+
+							# Write the configuration back out to the file.
+							with open(server_config_path, 'w') as f:
+								f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+							IrodsController().reload_configuration()
+
+							# Now try to authenticate and observe success because TLS/SSL is enabled and it doesn't
+							# matter to what value insecure_mode is configured.
+							self.auth_session.assert_icommand(
+								['iinit'], 'STDOUT', 'Password:', input=f'{self.auth_session.password}\n')
+
+						with self.subTest('insecure_mode = False'):
+							# Set the insecure_mode value to false in the server configuration. In this way, we can test
+							# the configuration value being false, which would disallow non-TLS/SSL enabled
+							# authentications.
+							server_config['plugin_configuration']['authentication']['pam_interactive'] = {
+								'insecure_mode': False
+							}
+
+							# Write the configuration back out to the file.
+							with open(server_config_path, 'w') as f:
+								f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+							IrodsController().reload_configuration()
+
+							# Now try to authenticate and observe success because TLS/SSL is enabled and it doesn't
+							# matter to what value insecure_mode is configured.
+							self.auth_session.assert_icommand(
+								['iinit'], 'STDOUT', 'Password:', input=f'{self.auth_session.password}\n')
+
+						with self.subTest('insecure_mode is unconfigured'):
+							# Delete the insecure_mode configuration if it exists in the server configuration. In this
+							# way, we can test the default value used by the plugin for this configuration (which should
+							# be false).
+							auth_config = server_config['plugin_configuration']['authentication']
+							if 'pam_interactive' in auth_config and 'insecure_mode' in auth_config['pam_interactive']:
+								del server_config['plugin_configuration']['authentication']['pam_interactive']['insecure_mode']
+
+							# Write the configuration back out to the file.
+							with open(server_config_path, 'w') as f:
+								f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+							IrodsController().reload_configuration()
+
+							# Now try to authenticate and observe success because TLS/SSL is enabled and it doesn't
+							# matter whether insecure_mode is configured.
+							self.auth_session.assert_icommand(
+								['iinit'], 'STDOUT', 'Password:', input=f'{self.auth_session.password}\n')
+
+		finally:
+			self.auth_session.environment_file_contents = auth_session_env_backup
+			self.admin.environment_file_contents = admin_session_env_backup
+
+
+@unittest.skipIf(test.settings.USE_SSL, 'These tests specifically require TLS/SSL to be off.')
+@unittest.skipIf(test.settings.RUN_IN_TOPOLOGY, 'insecure_mode cannot be configured for all servers from the tests.')
+class test_insecure_mode_with_no_ssl(unittest.TestCase):
+	plugin_name = IrodsConfig().default_rule_engine_plugin
+
+	@classmethod
+	def setUpClass(self):
+		self.admin = session.mkuser_and_return_session('rodsadmin', 'otherrods', 'rods', lib.get_hostname())
+
+		cfg = lib.open_and_load_json(
+			os.path.join(IrodsConfig().irods_directory, 'test', 'test_framework_configuration.json'))
+		self.auth_user = cfg['irods_authuser_name']
+		self.auth_pass = cfg['irods_authuser_password']
+
+		# Requires existence of OS account 'irodsauthuser' with password ';=iamnotasecret'
+		try:
+			import pwd
+			pwd.getpwnam(self.auth_user)
+
+		except KeyError:
+			# This is a requirement in order to run these tests and running the tests is required for our test suite, so
+			# we always fail here when the prerequisites are not being met on the test-running host.
+			raise EnvironmentError(
+				'OS user "{}" with password "{}" must exist in order to run these tests.'.format(
+				self.auth_user, self.auth_pass))
+
+		self.auth_session = session.mkuser_and_return_session('rodsuser', self.auth_user, self.auth_pass, lib.get_hostname())
+		self.service_account_environment_file_path = os.path.join(
+			os.path.expanduser('~'), '.irods', 'irods_environment.json')
+
+		# Set the authentication scheme for the test session to pam_interactive.
+		self.authentication_scheme = 'pam_interactive'
+		auth_session_client_environment_contents = self.auth_session.environment_file_contents
+		auth_session_client_environment_contents['irods_authentication_scheme'] = self.authentication_scheme
+		self.auth_session.environment_file_contents.update(auth_session_client_environment_contents)
+
+	@classmethod
+	def tearDownClass(self):
+		# Set the authentication scheme for the test session back to native so that we can clean up.
+		auth_session_client_environment_contents = self.auth_session.environment_file_contents
+		auth_session_client_environment_contents['irods_authentication_scheme'] = 'native'
+		self.auth_session.environment_file_contents.update(auth_session_client_environment_contents)
+
+		self.auth_session.__exit__()
+
+		self.admin.assert_icommand(['iadmin', 'rmuser', self.auth_session.username])
+		self.admin.__exit__()
+		with session.make_session_for_existing_admin() as admin_session:
+			admin_session.assert_icommand(['iadmin', 'rmuser', self.admin.username])
+
+	def test_authenticating_with_insecure_mode_unconfigured_fails(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Delete the insecure_mode configuration if it exists in the server configuration. In this way, we can
+			# test the default value used by the plugin for this configuration (which should be false).
+			auth_config = server_config['plugin_configuration']['authentication']
+			if 'pam_interactive' in auth_config and 'insecure_mode' in auth_config['pam_interactive']:
+				del server_config['plugin_configuration']['authentication']['pam_interactive']['insecure_mode']
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe an error because TLS/SSL is not enabled and insecure_mode is not
+			# enabled.
+			self.auth_session.assert_icommand(
+				['iinit'], 'STDERR', 'SYS_NOT_ALLOWED', input=f'{self.auth_session.password}\n')
+
+	def test_authenticating_with_insecure_mode_value_of_false_fails(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Set the insecure_mode value to false in the server configuration. In this way, we can test the
+			# configuration value being false, which would disallow non-TLS/SSL enabled authentications.
+			server_config['plugin_configuration']['authentication']['pam_interactive'] = {'insecure_mode': False}
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe an error because TLS/SSL is not enabled and insecure_mode is not
+			# enabled.
+			self.auth_session.assert_icommand(
+				['iinit'], 'STDERR', 'SYS_NOT_ALLOWED', input=f'{self.auth_session.password}\n')
+
+	def test_authenticating_with_insecure_mode_value_of_true_succeeds(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Set the insecure_mode value to true in the server configuration. In this way, we can test the
+			# configuration value being true, which would allow non-TLS/SSL enabled authentications.
+			server_config['plugin_configuration']['authentication']['pam_interactive'] = {'insecure_mode': True}
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe success because TLS/SSL is not enabled, but insecure_mode is enabled.
+			self.auth_session.assert_icommand(['iinit'], 'STDOUT', 'Password:', input=f'{self.auth_session.password}\n')
+
+	def test_authenticating_with_insecure_mode_non_boolean_value_fails(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Set the insecure_mode value to some non-boolean value. This will result in an error because the server
+			# configuration is malformed.
+			server_config['plugin_configuration']['authentication']['pam_interactive'] = {'insecure_mode': 'nope'}
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe an error because the server is misconfigured.
+			self.auth_session.assert_icommand(
+				['iinit'], 'STDERR', 'CONFIGURATION_ERROR', input=f'{self.auth_session.password}\n')
