@@ -33,13 +33,32 @@ It is **highly recommended** that TLS/SSL be required in the server when using t
 
 This plugin uses the standard set of authentication configurations found in `R_GRID_CONFIGURATION` for configuring Time-To-Live (TTL) on authenticated "sessions". You can read about these configurations here: [https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration](https://docs.irods.org/4.3.2/system_overview/configuration/#authentication-configuration)
 
-#### `server_config.json` configuration: `insecure_mode`
+#### `pam_stack_name`
+
+`pam_stack_name` gives the iRODS administrator the ability to specify a PAM stack to use for `pam_interactive` authentication. Historically, the plugin has required that `/etc/pam.d/irods` be the name of the PAM stack file to use. With this configuration option, the administrator can specify a different PAM stack name to use.
+
+The value of `pam_stack_name` must be a string which refers to the name of a file in `/etc/pam.d` or a service in `/etc/pam.conf` on the catalog service provider. In the absence of this configuration, a default value of "irods" is used. For example, if an administrator wishes to use a PAM stack called `/etc/pam.d/super-secure-auth` with `pam_interactive` which is in use by other services within the system, rather than changing the name of the PAM stack to `irods`, the administrator can change the `pam_stack_name` value to `super-secure-auth` to leverage the same PAM stack as other services.
+
+Note: The value of this configuration is used as the value for the `service_name` argument for `pam_start`. If the configured `pam_stack_name` does not exist in `/etc/pam.d` or `/etc/pam.conf`, the PAM system will fall back to its default behavior. This default behavior varies from platform to platform, so the administrator should take care that the system is properly configured. For more information about configuring PAM services, see the documentation: [https://linux.die.net/man/5/pam.conf](https://linux.die.net/man/5/pam.conf). For more information about `pam_start`, see the documentation: [https://linux.die.net/man/3/pam_start](https://linux.die.net/man/3/pam_start)
+
+The configuration option is set in the server's `server_config.json` file (for packaged installations, this is found in `/etc/irods`). Here is how to configure `pam_stack_name`:
+```javascript
+"plugin_configuration": {
+    "authentication": {
+        "pam_interactive": {
+            "pam_stack_name": "irods"
+        }
+    }
+}
+```
+
+#### `insecure_mode`
 
 `insecure_mode` gives the iRODS administrator the ability to allow for non-TLS/SSL-enabled communications between the client and the server for authentications using `pam_interactive`. TLS/SSL is required by default when using this plugin because sensitive user information is sent over the network to communicate with the PAM service via the catalog service provider. **It is highly recommended to leave this configuration option at its default value of `false`.** The configuration option has been introduced for demo and testing purposes.
 
 If the value is set to `true` and the user attempting to authenticate using this plugin does not have TLS/SSL enabled in the client-server communications, it is allowed, and a warning message is written to the server log to remind the administrator that sensitive user information is being sent over the network without encryption. If the value is set to `false`, a `SYS_NOT_ALLOWED` error will be returned if the user attempting to authenticate using this plugin does not have TLS/SSL enabled in the client-server communications. In the absence of this configuration, a default value of `false` is used.
 
-Here is how to configure `insecure_mode`:
+The configuration option is set in the server's `server_config.json` file (for packaged installations, this is found in `/etc/irods`). Here is how to configure `insecure_mode`:
 ```javascript
 "plugin_configuration": {
     "authentication": {

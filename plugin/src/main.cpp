@@ -35,10 +35,11 @@
 #include <irods/irods_server_properties.hpp>
 #include <irods/rsAuthCheck.hpp>
 #include <irods/rsAuthRequest.hpp>
+
+#include <fmt/ranges.h> // for fmt::join
 #endif
 
 #ifdef RODS_SERVER
-const char PAM_STACK_NAME[] = "irods";
 const int SESSION_TIMEOUT = 3600;
 #endif
 
@@ -79,6 +80,9 @@ namespace
     // Only define log_pam for server-side plugin because clients should not attempt to write to the server log.
     using log_pam = irods::experimental::log::logger<pam_interactive_auth_plugin_logging_category>;
     namespace fs = boost::filesystem;
+
+    // TODO(irods/irods#7937): We can use irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION once its value is not "auth".
+    constexpr const char* AUTHENTICATION_CONFIG_KW = "authentication";
 
     auto get_pam_checker_program() -> const fs::path&
     {
@@ -597,8 +601,9 @@ namespace irods
         }
         return irods_auth::request(*host->conn, req);
       }
+      const auto pam_stack_name = get_pam_stack_name_from_configuration();
       auto session = Session::getSingleton(
-          PAM_STACK_NAME, get_pam_checker_program().c_str(), comm.clientUser.userName, SESSION_TIMEOUT);
+          pam_stack_name, get_pam_checker_program().c_str(), comm.clientUser.userName, SESSION_TIMEOUT);
 
       std::string resp_str(req.value("resp", std::string("")));
 
@@ -673,42 +678,63 @@ namespace irods
 
     static auto require_secure_communications() -> bool
     {
+        constexpr const char* KW_CFG_PAM_INTERACTIVE_INSECURE_MODE = "insecure_mode";
+        static const auto config_path = irods::configuration_parser::key_path_t{
+            irods::KW_CFG_PLUGIN_CONFIGURATION,
+            AUTHENTICATION_CONFIG_KW,
+            irods::pam_interactive_authentication::pam_interactive_scheme,
+            KW_CFG_PAM_INTERACTIVE_INSECURE_MODE};
         try {
-            // TODO(irods/irods#7937): We can use irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION once its value is not "auth".
-            constexpr const char* KW_CFG_PLUGIN_TYPE_AUTHENTICATION = "authentication";
-            constexpr const char* KW_CFG_PAM_INTERACTIVE_INSECURE_MODE = "insecure_mode";
-            // Return the negation of the configuration's value because the configure is "insecure_mode", but this
-            // function is named "require_secure_communications", which is the opposite.
-            return !irods::get_server_property<const bool>(
-                irods::configuration_parser::key_path_t{
-                    irods::KW_CFG_PLUGIN_CONFIGURATION,
-                    KW_CFG_PLUGIN_TYPE_AUTHENTICATION,
-                    irods::pam_interactive_authentication::pam_interactive_scheme,
-                    KW_CFG_PAM_INTERACTIVE_INSECURE_MODE});
+            // Return the negation of the configuration's value because the configuration is "insecure_mode", but this
+            // function is named "require_secure_communications", which is the opposite. So, if insecure_mode is set to
+            // true, we should return false for "require_secure_communications"; and vice-versa.
+            return !irods::get_server_property<const bool>(config_path);
         }
         catch (const irods::exception& e) {
             if (KEY_NOT_FOUND == e.code()) {
                 // If the plugin configuration is not set, default to requiring secure communications.
                 return true;
             }
-
             // Re-throw for any other error.
             throw;
         }
         catch (const json::exception e) {
             THROW(CONFIGURATION_ERROR,
-                fmt::format("Error occurred while attempting to get the value of server configuration "
-                            "[plugin_configuration.authentication.pam_interactive.insecure_mode]: {}", e.what()));
+                fmt::format("Error occurred while attempting to get the value of server configuration [{}]: {}",
+                            fmt::join(config_path, "."), e.what()));
         }
     } // require_secure_communications
+
+    static auto get_pam_stack_name_from_configuration() -> std::string
+    {
+        constexpr const char* KW_CFG_PAM_INTERACTIVE_PAM_STACK_NAME = "pam_stack_name";
+        static const auto config_path = irods::configuration_parser::key_path_t{
+            irods::KW_CFG_PLUGIN_CONFIGURATION,
+            AUTHENTICATION_CONFIG_KW,
+            irods::pam_interactive_authentication::pam_interactive_scheme,
+            KW_CFG_PAM_INTERACTIVE_PAM_STACK_NAME};
+        try {
+            return irods::get_server_property<const std::string>(config_path);
+        }
+        catch (const irods::exception& e) {
+            if (KEY_NOT_FOUND == e.code()) {
+                // If the plugin configuration is not set, default to "irods".
+                return "irods";
+            }
+            // Re-throw for any other error.
+            throw;
+        }
+        catch (const json::exception e) {
+            THROW(CONFIGURATION_ERROR,
+                fmt::format("Error occurred while attempting to get the value of server configuration [{}]: {}",
+                            fmt::join(config_path, "."), e.what()));
+        }
+    } // get_pam_stack_name_from_configuration
 #endif
   }; // class pam_authentication
 } // namespace irods
-
 
 extern "C"
 irods::pam_interactive_authentication* plugin_factory(const std::string&, const std::string&) {
   return new irods::pam_interactive_authentication{};
 }
-
-
