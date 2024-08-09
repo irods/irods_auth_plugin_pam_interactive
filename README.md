@@ -50,37 +50,7 @@ Here is how to configure `insecure_mode`:
 }
 ```
 
-### Client-side configuration
-
-Set the `irods_authentication_scheme` in the client environment to `pam_interactive`.
-
-The client environment should be configured to use TLS/SSL if the server requires TLS/SSL. More information about configuring the iRODS client environment to use TLS/SSL can be found here: [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup)
-
-## Usage
-
-### Example implementation: Replacement for `pam_password` authentication
-
-This plugin can be used as a drop-in replacement for `pam_password` (with the exception of some differing prompts). Here's how to set it up.
-
-Configure the `irods` PAM stack as described in the documentation for PAM authentication (see [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module)):
-```
-$ cat /etc/pam.d/irods
-auth        required      pam_env.so
-auth        sufficient    pam_unix.so
-auth        requisite     pam_succeed_if.so uid >= 500 quiet
-auth        required      pam_deny.so
-```
-
-The user should then be able to run `iinit` and see the following:
-```bash
-$ iinit
-Enter your iRODS user name: alice
-Password: 
-```
-
-If "Password" is entered correctly, the user will be authenticated with iRODS, just like `pam_password`. The "Password" prompt is coming from the `pam_unix` module. For more information about this module, see the documentation in **man pam_unix**, or [https://linux.die.net/man/8/pam_unix](https://linux.die.net/man/8/pam_unix).
-
-## Logging
+#### Logging
 
 The server-side plugin includes a logging category which can be configured in `server_config.json` under the `log_level` section like so:
 ```javascript
@@ -92,6 +62,59 @@ The server-side plugin includes a logging category which can be configured in `s
     // ... Other Log Categories ...
 },
 ```
+
+### Client-side configuration
+
+Set the `irods_authentication_scheme` in the client environment to `pam_interactive`.
+
+The client environment should be configured to use TLS/SSL if the server requires TLS/SSL. More information about configuring the iRODS client environment to use TLS/SSL can be found here: [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#client-ssl-setup)
+
+## Example Implementations and Usage
+
+### Linux password authentication (i.e. `pam_password`)
+
+This plugin can be used as a drop-in replacement for `pam_password` and the legacy PAM authentication plugin (with the exception of some differing prompts). Here's how to set it up.
+
+#### Setting up users
+
+In order to use the plugin in this case, a PAM user with a password must exist and be permitted to authenticate in the Linux environment with a password. There must also exist an iRODS user in the local zone with the same name as the PAM user. For example, if there is a PAM user named `alice` to whom we want to give iRODS access, an iRODS user named `alice` must also exist in the zone with which the user will be authenticating.
+
+Here is a simple way to create a Linux user with a password (note: this requires root access):
+```bash
+sudo useradd -m alice # the -m means "create a home directory"
+sudo usermod -p password_for_alice alice
+```
+
+Here is a simple way to create an iRODS user (note: this requires `rodsadmin` permissions):
+```bash
+iadmin mkuser alice rodsuser
+```
+
+#### Configure the PAM stack
+
+Configure the `irods` PAM stack as described in the documentation for PAM authentication (see [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module)):
+```
+$ cat /etc/pam.d/irods
+auth        required      pam_env.so
+auth        sufficient    pam_unix.so
+auth        requisite     pam_succeed_if.so uid >= 500 quiet
+auth        required      pam_deny.so
+```
+
+#### Try it out
+
+Switch to the Linux user that we wish to authenticate. The user should be able to run `iinit` and see the following:
+```bash
+$ iinit
+Enter your iRODS user name: alice
+Password: 
+```
+
+If "Password" is entered correctly, the user will be authenticated with iRODS, just like `pam_password`. The "Password" prompt is coming from the `pam_unix` module. For more information about this module, see the documentation in **man pam_unix**, or [https://linux.die.net/man/8/pam_unix](https://linux.die.net/man/8/pam_unix).
+
+
+
+
 
 ## Testing
 
