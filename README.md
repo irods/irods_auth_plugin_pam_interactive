@@ -112,9 +112,53 @@ Password:
 
 If "Password" is entered correctly, the user will be authenticated with iRODS, just like `pam_password`. The "Password" prompt is coming from the `pam_unix` module. For more information about this module, see the documentation in **man pam_unix**, or [https://linux.die.net/man/8/pam_unix](https://linux.die.net/man/8/pam_unix).
 
+### Kerberos authentication
 
+This plugin can be used as a replacement for the Kerberos authentication plugin ([https://github.com/irods/irods_auth_plugin_kerberos](https://github.com/irods/irods_auth_plugin_kerberos)). Here's how to set it up.
 
+#### Set up the Kerberos service
 
+Make sure that your organization has a Kerberos service. For information about how to do this, please see the official Kerberos documentation: [http://web.mit.edu/kerberos/krb5-current/doc/admin/install.html](http://web.mit.edu/kerberos/krb5-current/doc/admin/install.html) In the "Additional References", the Kerberos team has provided an externally written guide for installing and configuring Kerberos on Debian-based systems which may prove helpful: [http://techpubs.spinlocksolutions.com/dklar/kerberos.html#intro](http://techpubs.spinlocksolutions.com/dklar/kerberos.html#intro)
+
+#### Setting up users
+
+In order to use the plugin in this case, a Kerberos user with a password must exist and be permitted to authenticate in the Kerberos environment with a password. There must also exist an iRODS user in the local zone with the same name as the Kerberos user. For example, if there is a Kerberos user named `alice` to whom we want to give iRODS access, an iRODS user named `alice` must also exist in the zone with which the user will be authenticating.
+
+Here is a simple way to create a user in Kerberos (note: requires admin privileges in Kerberos). First, run `kadmin` and authenticate as the Kerberos administrator (if you are connected directly to a Kerberos administration server, you can use `kadmin.local`). Then, you can run this to create an unprivileged user:
+```bash
+addprinc -policy user alice
+```
+
+Here is a simple way to create an iRODS user (note: this requires `rodsadmin` permissions):
+```bash
+iadmin mkuser alice rodsuser
+```
+
+#### Configure the PAM stack
+
+In order to use Kerberos via PAM, we need to install the Kerberos PAM module, `pam_krb5`. Locating this software package is an exercise left to the reader. If all else fails, the .tar.gz files and source code can be found here: [https://www.eyrie.org/~eagle/software/pam-krb5](https://www.eyrie.org/~eagle/software/pam-krb5)
+
+For more information about this module, see the documentation in **man pam_krb5**, or [https://linux.die.net/man/8/pam_krb5](https://linux.die.net/man/8/pam_krb5).
+
+Configure the `irods` PAM stack as described in the documentation for PAM authentication (see [https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module](https://docs.irods.org/4.3.2/plugins/pluggable_authentication/#pam-pluggable-authentication-module)):
+```
+$ cat /etc/pam.d/irods
+auth    sufficient    pam_krb5.so minimum_uid=1000
+auth    requisite     pam_deny.so
+auth    required      pam_permit.so
+```
+Note: The PAM stack doesn't have to look exactly like this. For instance, Linux authentication via `pam_unix` can be used as a backup if Linux users exist and are allowed to authenticate with a password in your system. This example is just demonstrating Kerberos authentication for iRODS via PAM in a very simple manner.
+
+#### Try it out
+
+Switch to the PAM user that we wish to authenticate. The user should be able to run `iinit` and see the following:
+```bash
+$ iinit
+Enter your iRODS user name: alice
+Password: 
+```
+
+If "Password" is entered correctly, the user will be authenticated with iRODS. The "Password" prompt is coming from the `pam_krb5` module.
 
 ## Testing
 
