@@ -69,10 +69,9 @@ class test_configurations(unittest.TestCase):
 
 		cfg = lib.open_and_load_json(
 			os.path.join(IrodsConfig().irods_directory, 'test', 'test_framework_configuration.json'))
-		self.auth_user = cfg['irods_authuser_name']
-		self.auth_pass = cfg['irods_authuser_password']
+		self.auth_user = cfg['irods_pam_interactive_name']
+		self.auth_pass = cfg['irods_pam_interactive_password']
 
-		# Requires existence of OS account 'irodsauthuser' with password ';=iamnotasecret'
 		try:
 			import pwd
 			pwd.getpwnam(self.auth_user)
@@ -774,10 +773,9 @@ class test_insecure_mode_with_no_ssl(unittest.TestCase):
 
 		cfg = lib.open_and_load_json(
 			os.path.join(IrodsConfig().irods_directory, 'test', 'test_framework_configuration.json'))
-		self.auth_user = cfg['irods_authuser_name']
-		self.auth_pass = cfg['irods_authuser_password']
+		self.auth_user = cfg['irods_pam_interactive_name']
+		self.auth_pass = cfg['irods_pam_interactive_password']
 
-		# Requires existence of OS account 'irodsauthuser' with password ';=iamnotasecret'
 		try:
 			import pwd
 			pwd.getpwnam(self.auth_user)
