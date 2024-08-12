@@ -897,3 +897,122 @@ class test_insecure_mode_with_no_ssl(unittest.TestCase):
 			# Now try to authenticate and observe an error because the server is misconfigured.
 			self.auth_session.assert_icommand(
 				['iinit'], 'STDERR', 'CONFIGURATION_ERROR', input=f'{self.auth_session.password}\n')
+
+
+@unittest.skipIf(test.settings.RUN_IN_TOPOLOGY, 'insecure_mode cannot be configured for all servers from the tests.')
+class test_pam_stack_configuration(unittest.TestCase):
+	plugin_name = IrodsConfig().default_rule_engine_plugin
+
+	@classmethod
+	def setUpClass(self):
+		self.admin = session.mkuser_and_return_session('rodsadmin', 'otherrods', 'rods', lib.get_hostname())
+
+		cfg = lib.open_and_load_json(
+			os.path.join(IrodsConfig().irods_directory, 'test', 'test_framework_configuration.json'))
+		self.auth_user = cfg['irods_pam_interactive_name']
+		self.auth_pass = cfg['irods_pam_interactive_password']
+
+		try:
+			import pwd
+			pwd.getpwnam(self.auth_user)
+
+		except KeyError:
+			# This is a requirement in order to run these tests and running the tests is required for our test suite, so
+			# we always fail here when the prerequisites are not being met on the test-running host.
+			raise EnvironmentError(
+				'OS user "{}" with password "{}" must exist in order to run these tests.'.format(
+				self.auth_user, self.auth_pass))
+
+		self.auth_session = session.mkuser_and_return_session('rodsuser', self.auth_user, self.auth_pass, lib.get_hostname())
+		self.service_account_environment_file_path = os.path.join(
+			os.path.expanduser('~'), '.irods', 'irods_environment.json')
+
+		# Set the authentication scheme for the test session to pam_interactive.
+		self.authentication_scheme = 'pam_interactive'
+		auth_session_client_environment_contents = self.auth_session.environment_file_contents
+		auth_session_client_environment_contents['irods_authentication_scheme'] = self.authentication_scheme
+		self.auth_session.environment_file_contents.update(auth_session_client_environment_contents)
+
+	@classmethod
+	def tearDownClass(self):
+		# Set the authentication scheme for the test session back to native so that we can clean up.
+		auth_session_client_environment_contents = self.auth_session.environment_file_contents
+		auth_session_client_environment_contents['irods_authentication_scheme'] = 'native'
+		self.auth_session.environment_file_contents.update(auth_session_client_environment_contents)
+
+		self.auth_session.__exit__()
+
+		self.admin.assert_icommand(['iadmin', 'rmuser', self.auth_session.username])
+		self.admin.__exit__()
+		with session.make_session_for_existing_admin() as admin_session:
+			admin_session.assert_icommand(['iadmin', 'rmuser', self.admin.username])
+
+	def test_switching_back_and_forth_between_pam_stacks(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Set the insecure_mode value to true in the server configuration for easier testing.
+			server_config['plugin_configuration']['authentication']['pam_interactive'] = {'insecure_mode': True}
+
+			# Set the pam_stack_name to always-permit, which will always cause authentication to succeed.
+			server_config['plugin_configuration']['authentication']['pam_interactive']['pam_stack_name'] = 'always-permit'
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Try to authenticate and observe success because this stack always allows authentication.
+			self.auth_session.assert_icommand(['iinit'])
+
+			# Now set the pam_stack_name to always-deny, which will always cause authentication to fail.
+			server_config['plugin_configuration']['authentication']['pam_interactive']['pam_stack_name'] = 'always-deny'
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe failure...
+			self.auth_session.assert_icommand(
+				["iinit"], 'STDERR', 'CAT_INVALID_AUTHENTICATION: authentication flow completed without success')
+
+			# Set the pam_stack_name back to always-permit...
+			server_config['plugin_configuration']['authentication']['pam_interactive']['pam_stack_name'] = 'always-permit'
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Try to authenticate and observe success.
+			self.auth_session.assert_icommand(['iinit'])
+
+	def test_authenticating_with_pam_stack_name_as_non_string_fails(self):
+		server_config_path = paths.server_config_path()
+		with lib.file_backed_up(server_config_path):
+			# Get the server_config contents so that we can manipulate them.
+			with open(server_config_path) as f:
+				server_config = json.load(f)
+
+			# Set the insecure_mode value to true in the server configuration for easier testing.
+			server_config['plugin_configuration']['authentication']['pam_interactive'] = {'insecure_mode': True}
+
+			# Set the pam_stack_name to some non-string value, which will result in a configuration error.
+			server_config['plugin_configuration']['authentication']['pam_interactive']['pam_stack_name'] = False
+
+			# Write the configuration back out to the file.
+			with open(server_config_path, 'w') as f:
+				f.write(json.dumps(server_config, sort_keys=True, indent=4, separators=(',', ': ')))
+
+			IrodsController().reload_configuration()
+
+			# Now try to authenticate and observe failure because the configuration is malformed.
+			self.auth_session.assert_icommand(
+				['iinit'], 'STDERR', 'CONFIGURATION_ERROR', input=f'{self.auth_session.password}\n')
