@@ -17,6 +17,14 @@ def create_pam_stack(name, contents):
 	with open(path_to_pam_stack, 'w') as f:
 		f.write(contents)
 
+def create_pam_stack_for_permit_tests():
+	pam_stack_contents = 'auth        required      pam_permit.so'
+	return create_pam_stack('always-permit', pam_stack_contents)
+
+def create_pam_stack_for_deny_tests():
+	pam_stack_contents = 'auth        required      pam_deny.so'
+	return create_pam_stack('always-deny', pam_stack_contents)
+
 def create_pam_stack_for_pam_password_tests():
 	pam_stack_contents = textwrap.dedent('''
 		auth        required      pam_env.so
@@ -28,6 +36,8 @@ def create_pam_stack_for_pam_password_tests():
 
 def setup_test_pam_stacks():
 	create_pam_stack_for_pam_password_tests()
+	create_pam_stack_for_permit_tests()
+	create_pam_stack_for_deny_tests()
 
 def configure_system_for_pam_password_tests():
 	def create_test_user_for_pam_password_tests():
