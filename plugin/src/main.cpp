@@ -528,35 +528,76 @@ namespace irods
 #ifdef RODS_SERVER
     auto pam_auth_agent_request(rsComm_t& comm, const json& req) -> json
     {
+        // Set the auth scheme for the agent connection to pam_interactive.
+        if (comm.auth_scheme) {
+            std::free(comm.auth_scheme);
+        }
+        comm.auth_scheme = strdup(pam_interactive_scheme);
+
+        // Set the log level for the pam_interactive plugin's log category.
         constexpr const char* CFG_LOG_LEVEL_CATEGORY_PAM_INTERACTIVE_AUTH_PLUGIN_KW = "pam_interactive_auth_plugin";
         log_pam::set_level(
             irods::experimental::log::get_level_from_config(CFG_LOG_LEVEL_CATEGORY_PAM_INTERACTIVE_AUTH_PLUGIN_KW));
 
+        // Make sure the connection is secured before proceeding. If the connection is not secure, a warning will be
+        // displayed in the server log at the very least. If the plugin is not configured to allow for insecure
+        // communications between the client and server, the authentication attempt is rejected outright.
         if (irods::CS_NEG_USE_SSL != comm.negotiation_results) {
             if (require_secure_communications()) {
                 THROW(SYS_NOT_ALLOWED,
                       "Client communications with this server are not secure and this authentication plugin is "
-                      "configured to require TLS/SSL communication. Authentication is not allowed unless this server is "
-                      "configured to require TLS/SSL in order to prevent leaking sensitive user information.");
+                      "configured to require TLS/SSL communication. Authentication is not allowed unless this server "
+                      "is configured to require TLS/SSL in order to prevent leaking sensitive user information.");
             }
             log_pam::warn("Client communications with this server are not secure, and sensitive user information is "
                           "being communicated over the network in an unencrypted manner. Configure this server to "
                           "require TLS/SSL to prevent security leaks.");
         }
 
-        json resp{req};
-        if (comm.auth_scheme) {
-            free(comm.auth_scheme);
+        // The catalog service provider will be conducting the PAM conversation as well as authenticating the user with
+        // iRODS. We need to redirect at this point to get the catalog service provider's agent set up as well, if this
+        // connection is not already on a catalog service provider.
+        rodsServerHost_t* host = nullptr;
+        log_pam::trace("Connecting to catalog service provider");
+        if (const int ec = getAndConnRcatHost(&comm, PRIMARY_RCAT, comm.clientUser.rodsZone, &host); ec < 0) {
+            THROW(ec, "getAndConnRcatHost failed.");
+        }
+        if (LOCAL_HOST != host->localFlag) {
+            // In addition to the client-server connection, the server-to-server connection which occurs between the
+            // local server and the catalog service provider must be secured as well. If the connection is not secure,
+            // a warning will be displayed in the server log at the very least. If the plugin is not configured to
+            // allow for insecure communications between the client (in this case, also a server) and server, the
+            // authentication attempt is rejected outright.
+            if (irods::CS_NEG_USE_SSL != host->conn->negotiation_results) {
+                if (require_secure_communications()) {
+                    THROW(SYS_NOT_ALLOWED,
+                          "Server-to-server communications with the catalog service provider server are not secure and "
+                          "this authentication plugin is configured to require TLS/SSL communication. Authentication "
+                          "is not allowed unless this server is configured to require TLS/SSL in order to prevent "
+                          "leaking sensitive user information.");
+                }
+                log_pam::warn("Server-to-server communications with the catalog service provider server are not "
+                              "secure, and sensitive user information is being communicated over the network in an "
+                              "unencrypted manner. Configure this server to require TLS/SSL to prevent security "
+                              "leaks.");
+            }
+            // Note: We should not disconnect this server-to-server connection because the connection is not owned by
+            // this context. A set of server-to-server connections is maintained by the server agent and reused by
+            // various APIs and operations as needed.
+            return irods_auth::request(*host->conn, req);
         }
 
-        comm.auth_scheme = strdup(pam_interactive_scheme);
-        return resp;
+        // This operation does not have anything to add to the JSON structure, so just copy the request structure.
+        return req;
     } // native_auth_agent_request
 #endif
 
 #ifdef RODS_SERVER
     auto pam_auth_agent_response(rsComm_t& comm, const json& req) -> json
     {
+        // Make sure the connection is secured before proceeding. If the connection is not secure, a warning will be
+        // displayed in the server log at the very least. If the plugin is not configured to allow for insecure
+        // communications between the client and server, the authentication attempt is rejected outright.
         if (irods::CS_NEG_USE_SSL != comm.negotiation_results) {
             if (require_secure_communications()) {
                 THROW(SYS_NOT_ALLOWED,
@@ -572,27 +613,32 @@ namespace irods
       const std::vector<std::string_view> required_keys{"user_name", "zone_name"};
       irods_auth::throw_if_request_message_is_missing_key(req, required_keys);
 
+      // The catalog service provider will be conducting the PAM conversation as well as authenticating the user with
+      // iRODS. We need to redirect at this point as it is required for the PAM conversation to work correctly.
       rodsServerHost_t* host = nullptr;
       log_pam::trace("Connecting to catalog service provider");
-      if (const int ec = getAndConnRcatHost(&comm, PRIMARY_RCAT,
-                                            comm.clientUser.rodsZone,
-                                            &host); ec < 0) {
-        THROW(ec, "getAndConnRcatHost failed.");
+      if (const int ec = getAndConnRcatHost(&comm, PRIMARY_RCAT, comm.clientUser.rodsZone, &host); ec < 0) {
+          THROW(ec, "getAndConnRcatHost failed.");
       }
       if (LOCAL_HOST != host->localFlag) {
-        log_pam::trace("Redirecting call to catalog service provider");
-        if (irods::CS_NEG_USE_SSL != host->conn->negotiation_results) {
-            if (require_secure_communications()) {
-                THROW(SYS_NOT_ALLOWED,
-                      "Server-to-server communications with the catalog service provider server are not secure and "
-                      "this authentication plugin is configured to require TLS/SSL communication. Authentication is "
-                      "not allowed unless this server is configured to require TLS/SSL in order to prevent leaking "
-                      "sensitive user information.");
-            }
-            log_pam::warn("Server-to-server communications with the catalog service provider server are not secure, "
-                          "and sensitive user information is being communicated over the network in an unencrypted "
-                          "manner. Configure this server to require TLS/SSL to prevent security leaks.");
-        }
+          log_pam::trace("Redirecting call to catalog service provider");
+          // In addition to the client-server connection, the server-to-server connection which occurs between the
+          // local server and the catalog service provider must be secured as well. If the connection is not secure,
+          // a warning will be displayed in the server log at the very least. If the plugin is not configured to
+          // allow for insecure communications between the client (in this case, also a server) and server, the
+          // authentication attempt is rejected outright.
+          if (irods::CS_NEG_USE_SSL != host->conn->negotiation_results) {
+              if (require_secure_communications()) {
+                  THROW(SYS_NOT_ALLOWED,
+                        "Server-to-server communications with the catalog service provider server are not secure and "
+                        "this authentication plugin is configured to require TLS/SSL communication. Authentication is "
+                        "not allowed unless this server is configured to require TLS/SSL in order to prevent leaking "
+                        "sensitive user information.");
+              }
+              log_pam::warn("Server-to-server communications with the catalog service provider server are not secure, "
+                            "and sensitive user information is being communicated over the network in an unencrypted "
+                            "manner. Configure this server to require TLS/SSL to prevent security leaks.");
+          }
           // Note: We should not disconnect this server-to-server connection because the connection is not owned by
           // this context. A set of server-to-server connections is maintained by the server agent and reused by
           // various APIs and operations as needed.
