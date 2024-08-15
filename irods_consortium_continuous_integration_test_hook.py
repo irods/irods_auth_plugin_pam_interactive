@@ -9,6 +9,12 @@ import textwrap
 
 import irods_python_ci_utilities
 
+def irods_directory():
+	return str(os.path.join('/var', 'lib', 'irods'))
+
+def irods_test_log_directory():
+	return str(os.path.join(irods_directory(), 'log'))
+
 def create_pam_stack(name, contents):
 	path_to_pam_stack = os.path.join('/etc', 'pam.d', name)
 	if os.path.exists(path_to_pam_stack):
@@ -43,8 +49,7 @@ def configure_system_for_pam_password_tests():
 	def create_test_user_for_pam_password_tests():
 		username = 'pam_user'
 		password = 'pam_password!'
-		# TODO(#48): Find a different way to derive the "/var/lib/irods" paths.
-		path_to_test_config = os.path.join('/var', 'lib', 'irods', 'test', 'test_framework_configuration.json')
+		path_to_test_config = os.path.join(irods_directory(), 'test', 'test_framework_configuration.json')
 		with open(path_to_test_config, 'r') as f:
 			test_config = json.load(f)
 
@@ -91,9 +96,8 @@ def main():
 	finally:
 		output_root_directory = options.output_root_directory
 		if output_root_directory:
-			# TODO(#48): Find a different way to derive the "/var/lib/irods" paths.
-			irods_python_ci_utilities.gather_files_satisfying_predicate('/var/lib/irods/log', output_root_directory, lambda x: True)
-			shutil.copy('/var/lib/irods/log/test_output.log', output_root_directory)
+			irods_python_ci_utilities.gather_files_satisfying_predicate(
+				irods_test_log_directory(), output_root_directory, lambda x: True)
 
 if __name__ == '__main__':
 	main()
