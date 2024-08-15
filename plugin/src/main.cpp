@@ -580,12 +580,6 @@ namespace irods
         THROW(ec, "getAndConnRcatHost failed.");
       }
       if (LOCAL_HOST != host->localFlag) {
-        const auto disconnect = irods::at_scope_exit{[host]
-                                                     {
-                                                       rcDisconnect(host->conn);
-                                                       host->conn = nullptr;
-                                                     }
-        };
         log_pam::trace("Redirecting call to catalog service provider");
         if (irods::CS_NEG_USE_SSL != host->conn->negotiation_results) {
             if (require_secure_communications()) {
@@ -599,7 +593,10 @@ namespace irods
                           "and sensitive user information is being communicated over the network in an unencrypted "
                           "manner. Configure this server to require TLS/SSL to prevent security leaks.");
         }
-        return irods_auth::request(*host->conn, req);
+          // Note: We should not disconnect this server-to-server connection because the connection is not owned by
+          // this context. A set of server-to-server connections is maintained by the server agent and reused by
+          // various APIs and operations as needed.
+          return irods_auth::request(*host->conn, req);
       }
       const auto pam_stack_name = get_pam_stack_name_from_configuration();
       auto session = Session::getSingleton(
