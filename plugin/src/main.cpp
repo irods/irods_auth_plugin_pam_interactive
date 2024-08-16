@@ -35,6 +35,8 @@
 #include <irods/irods_server_properties.hpp>
 #include <irods/rsAuthCheck.hpp>
 #include <irods/rsAuthRequest.hpp>
+#include <irods/rs_get_grid_configuration_value.hpp>
+#include <irods/scoped_privileged_client.hpp>
 
 #include <fmt/ranges.h> // for fmt::join
 #endif
@@ -193,14 +195,14 @@ namespace irods
     // add the expiration time to the persistent state
     void add_pam_expiration(json & resp) {
         // offset between the TTL in the database and the expiration time in the local json document
-        constexpr int pam_time_to_live_offset = 60;
+        constexpr int pam_time_to_live_offset = 1;
 
         // pam entry in json document is valid for this amount of seconds
         // this value can be overwritten with the --ttl option of iinit
         // and the password min time if the server_config.json
         constexpr int pam_time_to_live_default = 3600;
 
-      int ttl_seconds = resp.value<int>("ttl_seconds", 0);
+      auto ttl_seconds = resp.value<rodsLong_t>("ttl_seconds", 0);
       // make sure that ttl on the client side expires before
       // the entry on the server.
       // In this way the user is sent to usual pam_interactive flow iinit instead of 
@@ -209,9 +211,6 @@ namespace irods
       ttl_seconds-= pam_time_to_live_offset;
       if(ttl_seconds < 0) {
         ttl_seconds = 0;
-      }
-      if(ttl_seconds == 0) {
-        ttl_seconds = pam_time_to_live_default;
       }
 
       std::ostringstream ss;
@@ -585,6 +584,52 @@ namespace irods
 #endif
 
 #ifdef RODS_SERVER
+    static auto get_password_min_time_grid_configuration(RsComm& _comm) -> rodsLong_t
+    {
+        GridConfigurationInput input{};
+        constexpr auto namespace_max_size = sizeof(input.name_space) - 1;
+        constexpr auto option_name_max_size = sizeof(input.option_name) - 1;
+        constexpr const char* authentication_namespace = "authentication";
+        constexpr const char* password_min_time_option_name = "password_min_time";
+        std::strncpy(input.name_space, authentication_namespace, namespace_max_size);
+        std::strncpy(input.option_name, password_min_time_option_name, option_name_max_size);
+
+        GridConfigurationOutput* output{};
+        irods::at_scope_exit free_output{[&output] { std::free(output); }};
+
+        // This scope is introduced to minimize elevated privileges needed to get the grid configuration value.
+        {
+            irods::experimental::scoped_privileged_client spc{_comm};
+            if (const auto ec = rs_get_grid_configuration_value(&_comm, &input, &output); ec != 0) {
+                THROW(ec, fmt::format("{}: Failed to get password_min_time grid configuration [ec={}]", __func__, ec));
+            }
+        }
+
+        // This is the default value built into the iRODS server.
+        constexpr rodsLong_t default_password_min_time = 121;
+        const auto* option_value = output->option_value;
+        try {
+            const rodsLong_t value = std::stoll(output->option_value);
+            if (value < 0) {
+                log_pam::warn(
+                    "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}]",
+                    __func__, option_value);
+                return default_password_min_time;
+            }
+            return value;
+        }
+        catch (const std::exception& e) {
+            log_pam::warn(
+                "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}] error:[{}]",
+                __func__, option_value, e.what());
+        }
+        catch (...) {
+            log_pam::warn(
+                "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}]", __func__, option_value);
+        }
+        return default_password_min_time;
+    } // get_password_min_time_grid_configuration
+
     auto pam_auth_agent_response(rsComm_t& comm, const json& req) -> json
     {
         // Make sure the connection is secured before proceeding. If the connection is not secure, a warning will be
@@ -671,8 +716,12 @@ namespace irods
               THROW(ec, "failed updating iRODS pam password");
           }
           resp["request_result"] = password_out.data();
-          // TODO(#38): Need to check for overflows here. In fact, this whole thing needs to be looked at.
-          resp["ttl_seconds"] = ttl * 3600;
+          if (ttl <= 0) {
+              resp["ttl_seconds"] = get_password_min_time_grid_configuration(comm);
+          }
+          else {
+              resp["ttl_seconds"] = static_cast<rodsLong_t>(ttl * 3600);
+          }
       }
       resp[irods_auth::next_operation] = Session::StateToString(p.first);
       if(p.second.empty() || p.second[0] != '{') {
