@@ -154,12 +154,6 @@ namespace irods
     void initialize_state(json& resp) {
       resp["pdirty"] = false;
       resp["pstate"] = "{}"_json;
-      std::string file_name(pam_auth_file_name());
-      std::ifstream file(file_name.c_str());
-      if (file.is_open()) {
-        file >> resp["pstate"];
-        file.close();
-      }
     }
 
     // returns true if iinit context
@@ -374,36 +368,6 @@ namespace irods
       return res;
     }
 
-    // determine file name of persistent state file
-    std::string pam_auth_file_name() const {
-      char *authfilename = getRodsEnvAuthFileName();
-      if(authfilename && *authfilename != '\0') {
-        return std::string(authfilename) + ".json";
-      }
-      else {
-        return std::string(getenv( "HOME" )) + "/.irods/.irodsA.json";
-      }
-    }
-
-    void save_state_to_file(const json& resp) {
-
-      json pstate{};
-
-      std::string file_name(pam_auth_file_name());
-      // open file in 0600 mode
-      int fd = obfiOpenOutFile(file_name.c_str(), 0);
-      if ( fd < 0 ) {
-        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
-      }
-      std::stringstream ss;
-      ss << pstate << std::flush;
-      int write_res = obfiWritePw(fd, ss.str().c_str());
-      close(fd);
-      if(write_res < 0 ) {
-        throw std::runtime_error((std::string("cannot write to  file ") + file_name).c_str());
-      }
-    }
-
     json step_authenticated(rcComm_t& comm, const json& req) {
       // This operation is basically just running the entire native authentication flow
       // because this is how the PAM authentication plugin has worked historically. This
@@ -414,7 +378,6 @@ namespace irods
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
-      save_state_to_file(resp);
       resp[irods_auth::next_operation] = perform_native_auth; 
       return resp;
     }
