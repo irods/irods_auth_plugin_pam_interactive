@@ -160,69 +160,6 @@ namespace irods
         file >> resp["pstate"];
         file.close();
       }
-      if(!resp["pstate"].contains("__expire__")) {
-
-      }
-    }
-
-    // return true, if the configuration is still valid
-    bool is_pam_valid(const json & resp) {
-      // return false if expiration date > now or not set
-      std::string expire_str = resp["pstate"].value("__expire__", std::string(""));
-      if(!expire_str.empty()) {
-        std::istringstream ss(expire_str);
-	
-        std::tm t = {};
-        // Using epoch seconds to check expiration 
-	long long int expire_epoch;
-        ss >> expire_epoch;
-	if (expire_epoch <= 0) {
-	  throw std::runtime_error(std::string("failed to parse expiration timestamp:'") + expire_str + "'");
-	}
-	
-	// now time point
-	std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
-	
-	// compare epoch timestamps to determine validity session
-	if (std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count() < expire_epoch ){
-	  
-          return true;
-        }
-      }
-      return false;
-    }
-
-    // add the expiration time to the persistent state
-    void add_pam_expiration(json & resp) {
-        // offset between the TTL in the database and the expiration time in the local json document
-        constexpr int pam_time_to_live_offset = 1;
-
-        // pam entry in json document is valid for this amount of seconds
-        // this value can be overwritten with the --ttl option of iinit
-        // and the password min time if the server_config.json
-        constexpr int pam_time_to_live_default = 3600;
-
-      auto ttl_seconds = resp.value<rodsLong_t>("ttl_seconds", 0);
-      // make sure that ttl on the client side expires before
-      // the entry on the server.
-      // In this way the user is sent to usual pam_interactive flow iinit instead of 
-      // just getting an authentication error
-      // The TTL is also checked in the backend
-      ttl_seconds-= pam_time_to_live_offset;
-      if(ttl_seconds < 0) {
-        ttl_seconds = 0;
-      }
-
-      std::ostringstream ss;
-
-      // now time point
-      std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
-      
-      // make expiration timestamp by adding ttl to current timestamp
-      // using std::chrono durations
-      ss << std::chrono::duration_cast<std::chrono::seconds>(tp.time_since_epoch()).count() + std::chrono::seconds{ttl_seconds}.count() << std::flush;
-      
-      resp["pstate"]["__expire__"] = ss.str();
     }
 
     // returns true if iinit context
@@ -244,7 +181,7 @@ namespace irods
         // The force_password_prompt keyword does not check for an existing password but instead forcibly displays the
         // authentication prompt(s). This is useful when a client like iinit wants to "reset" the user's authentication
         // "session" but in general other clients want to use the already-authenticated "session."
-        if (!check_force_prompt(resp) && is_pam_valid(resp)) {
+        if (!check_force_prompt(resp)) {
             // obfGetPw returns 0 if the password is retrieved successfully. Therefore, we do NOT need to
             // re-authenticate with PAM in this case. This being the case, we conclude that the user has already been
             // authenticated via PAM with the server. We proceed with steps for native authentication which will use the
@@ -450,7 +387,7 @@ namespace irods
 
     void save_state_to_file(const json& resp) {
 
-      json pstate{ {"__expire__", resp["pstate"].value("__expire__", "") } };
+      json pstate{};
 
       std::string file_name(pam_auth_file_name());
       // open file in 0600 mode
@@ -477,7 +414,6 @@ namespace irods
       if (const int ec = obfSavePw(0, 0, 0, pw.data()); ec < 0) {
         THROW(ec, "failed to save obfuscated password");
       }
-      add_pam_expiration(resp);
       save_state_to_file(resp);
       resp[irods_auth::next_operation] = perform_native_auth; 
       return resp;
@@ -584,52 +520,6 @@ namespace irods
 #endif
 
 #ifdef RODS_SERVER
-    static auto get_password_min_time_grid_configuration(RsComm& _comm) -> rodsLong_t
-    {
-        GridConfigurationInput input{};
-        constexpr auto namespace_max_size = sizeof(input.name_space) - 1;
-        constexpr auto option_name_max_size = sizeof(input.option_name) - 1;
-        constexpr const char* authentication_namespace = "authentication";
-        constexpr const char* password_min_time_option_name = "password_min_time";
-        std::strncpy(input.name_space, authentication_namespace, namespace_max_size);
-        std::strncpy(input.option_name, password_min_time_option_name, option_name_max_size);
-
-        GridConfigurationOutput* output{};
-        irods::at_scope_exit free_output{[&output] { std::free(output); }};
-
-        // This scope is introduced to minimize elevated privileges needed to get the grid configuration value.
-        {
-            irods::experimental::scoped_privileged_client spc{_comm};
-            if (const auto ec = rs_get_grid_configuration_value(&_comm, &input, &output); ec != 0) {
-                THROW(ec, fmt::format("{}: Failed to get password_min_time grid configuration [ec={}]", __func__, ec));
-            }
-        }
-
-        // This is the default value built into the iRODS server.
-        constexpr rodsLong_t default_password_min_time = 121;
-        const auto* option_value = output->option_value;
-        try {
-            const rodsLong_t value = std::stoll(output->option_value);
-            if (value < 0) {
-                log_pam::warn(
-                    "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}]",
-                    __func__, option_value);
-                return default_password_min_time;
-            }
-            return value;
-        }
-        catch (const std::exception& e) {
-            log_pam::warn(
-                "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}] error:[{}]",
-                __func__, option_value, e.what());
-        }
-        catch (...) {
-            log_pam::warn(
-                "{}: password_min_time value in R_GRID_CONFIGURATION is invalid. value:[{}]", __func__, option_value);
-        }
-        return default_password_min_time;
-    } // get_password_min_time_grid_configuration
-
     auto pam_auth_agent_response(rsComm_t& comm, const json& req) -> json
     {
         // Make sure the connection is secured before proceeding. If the connection is not secure, a warning will be
@@ -716,12 +606,6 @@ namespace irods
               THROW(ec, "failed updating iRODS pam password");
           }
           resp["request_result"] = password_out.data();
-          if (ttl <= 0) {
-              resp["ttl_seconds"] = get_password_min_time_grid_configuration(comm);
-          }
-          else {
-              resp["ttl_seconds"] = static_cast<rodsLong_t>(ttl * 3600);
-          }
       }
       resp[irods_auth::next_operation] = Session::StateToString(p.first);
       if(p.second.empty() || p.second[0] != '{') {
