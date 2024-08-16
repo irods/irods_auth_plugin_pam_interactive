@@ -39,14 +39,6 @@
 #include <fmt/ranges.h> // for fmt::join
 #endif
 
-#ifdef RODS_SERVER
-const int SESSION_TIMEOUT = 3600;
-#endif
-
-void _rsSetAuthRequestGetChallenge( const char* _c );
-int get64RandomBytes( char *buf );
-void setSessionSignatureClientside( char* _sig );
-
 namespace
 {
   namespace irods_auth = irods::experimental::auth;
@@ -644,6 +636,7 @@ namespace irods
           // various APIs and operations as needed.
           return irods_auth::request(*host->conn, req);
       }
+      constexpr int SESSION_TIMEOUT = 3600;
       const auto pam_stack_name = get_pam_stack_name_from_configuration();
       auto session = Session::getSingleton(
           pam_stack_name, get_pam_checker_program().c_str(), comm.clientUser.userName, SESSION_TIMEOUT);
