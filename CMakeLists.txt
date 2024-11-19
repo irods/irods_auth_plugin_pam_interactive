@@ -74,14 +74,12 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The integrated Rule-Oriented Data System"
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION ON)
-set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/packaging/postinst;")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 
 set(CPACK_RPM_COMPONENT_INSTALL ON)
 set(CPACK_RPM_PACKAGE_LICENSE "BSD-3-Clause")
 set(CPACK_RPM_PACKAGE_AUTOREQ 0)
 set(CPACK_RPM_PACKAGE_AUTOPROV 0)
-set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/postinst")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
 
 string(TOUPPER "${project_component_part}-client" irods_plugin_package_client_component)
@@ -99,9 +97,11 @@ set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_NAME "${PLUGIN
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_DEPENDS "irods-server (= ${IRODS_VERSION}), ${CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_NAME} (= ${CPACK_PACKAGE_VERSION}-${CPACK_DEBIAN_PACKAGE_RELEASE}), libpam0g")
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_BREAKS "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_REPLACES "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
+set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/packaging/postinst;")
 
 set(CPACK_RPM_${irods_plugin_package_server_component}_PACKAGE_NAME "${PLUGIN_PACKAGE_NAME}-server")
 set(CPACK_RPM_${irods_plugin_package_server_component}_PACKAGE_REQUIRES "irods-server = ${IRODS_VERSION}, ${CPACK_RPM_${irods_plugin_package_client_component}_PACKAGE_NAME} = ${CPACK_PACKAGE_VERSION}-${CPACK_RPM_PACKAGE_RELEASE}, pam")
+set(CPACK_RPM_${irods_plugin_package_server_component}_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/packaging/postinst")
 
 if (NOT CPACK_GENERATOR)
 	set(CPACK_GENERATOR ${IRODS_CPACK_GENERATOR} CACHE STRING "CPack generator to use, e.g. {DEB, RPM, TGZ}." FORCE)
