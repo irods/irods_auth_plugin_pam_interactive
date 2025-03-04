@@ -11,7 +11,7 @@ and this project **only** adheres to the following _(as defined at [Semantic Ver
 > - MINOR version when you add functionality in a backward compatible manner
 > - PATCH version when you make backward compatible bug fixes
 
-## [0.1.1] - 2025-03-XX
+## [0.1.1] - 2025-03-04
 
 This release addresses issues with packaging and availability. There are no functional changes to the plugin's implementation.
 
