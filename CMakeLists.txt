@@ -27,7 +27,10 @@ string(REPLACE "_" "-" project_component_part "${plugin_target_part}")
 include("${IRODS_TARGETS_PATH}")
 
 include(GNUInstallDirs)
-include(UseLibCXX)
+
+if (IRODS_VERSION VERSION_LESS 4.90.0)
+  include(UseLibCXX)
+endif()
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
