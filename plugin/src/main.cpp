@@ -75,13 +75,21 @@ namespace
     using log_pam = irods::experimental::log::logger<pam_interactive_auth_plugin_logging_category>;
     namespace fs = boost::filesystem;
 
-    // TODO(irods/irods#7937): We can use irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION once its value is not "auth".
+#if IRODS_VERSION_INTEGER < 4090000
+    // We could use irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION here, but its value is "auth" (not "authentication") in
+    // historical versions of the iRODS server. This is preserved to maintain compatibility with those versions.
     constexpr const char* AUTHENTICATION_CONFIG_KW = "authentication";
+#endif
 
     auto get_pam_checker_program() -> const fs::path&
     {
+#if IRODS_VERSION_INTEGER < 4090000
         static const auto pam_checker{
             irods::get_irods_default_plugin_directory() / "auth" / "pam_handshake_auth_check"};
+#else
+        static const auto pam_checker{
+            irods::get_irods_default_plugin_directory() / "authentication" / "pam_handshake_auth_check"};
+#endif
         return pam_checker;
     } // get_pam_checker_program
 #endif // RODS_SERVER
@@ -613,7 +621,11 @@ namespace irods
         constexpr const char* KW_CFG_PAM_INTERACTIVE_INSECURE_MODE = "insecure_mode";
         static const auto config_path = irods::configuration_parser::key_path_t{
             irods::KW_CFG_PLUGIN_CONFIGURATION,
+#if IRODS_VERSION_INTEGER < 4090000
             AUTHENTICATION_CONFIG_KW,
+#else
+            irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION,
+#endif
             irods::pam_interactive_authentication::pam_interactive_scheme,
             KW_CFG_PAM_INTERACTIVE_INSECURE_MODE};
         try {
@@ -642,7 +654,11 @@ namespace irods
         constexpr const char* KW_CFG_PAM_INTERACTIVE_PAM_STACK_NAME = "pam_stack_name";
         static const auto config_path = irods::configuration_parser::key_path_t{
             irods::KW_CFG_PLUGIN_CONFIGURATION,
+#if IRODS_VERSION_INTEGER < 4090000
             AUTHENTICATION_CONFIG_KW,
+#else
+            irods::KW_CFG_PLUGIN_TYPE_AUTHENTICATION,
+#endif
             irods::pam_interactive_authentication::pam_interactive_scheme,
             KW_CFG_PAM_INTERACTIVE_PAM_STACK_NAME};
         try {
