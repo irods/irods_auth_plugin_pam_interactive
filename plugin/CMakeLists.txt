@@ -34,7 +34,7 @@ foreach(plugin_variant IN ITEMS client server)
 		TARGETS
 		"${plugin_target_part}_${plugin_variant}"
 		LIBRARY
-		DESTINATION "${IRODS_PLUGINS_DIRECTORY}/auth"
+		DESTINATION "${IRODS_AUTHENTICATION_PLUGINS_DIRECTORY}"
 		COMPONENT "${project_component_part}-${plugin_variant}"
 	)
 endforeach()
