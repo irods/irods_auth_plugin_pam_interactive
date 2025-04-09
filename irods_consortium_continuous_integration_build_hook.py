@@ -27,10 +27,6 @@ def update_local_package_repositories():
     except KeyError:
         irods_python_ci_utilities.raise_not_implemented_for_distribution()
 
-def add_cmake_to_front_of_path():
-    cmake_path = '/opt/irods-externals/cmake3.21.4-0/bin'
-    os.environ['PATH'] = os.pathsep.join([cmake_path, os.environ['PATH']])
-
 def install_building_dependencies(externals_directory):
     # The externals_list needs to include all dependencies, not the minimum set required for this plugin. If custom
     # externals are being supplied via externals_directory, only the externals packages which exist in that directory
@@ -40,7 +36,6 @@ def install_building_dependencies(externals_directory):
         'irods-externals-boost-libcxx1.81.0-1',
         'irods-externals-clang-runtime13.0.1-0',
         'irods-externals-clang13.0.1-0',
-        'irods-externals-cmake3.21.4-0',
         'irods-externals-cppzmq4.8.1-1',
         'irods-externals-fmt-libcxx8.1.1-1',
         'irods-externals-json3.10.4-0',
@@ -61,15 +56,14 @@ def install_building_dependencies(externals_directory):
         for irods_externals in externals_list:
             externals.append(glob.glob(os.path.join(os_specific_directory, irods_externals + '*.{0}'.format(package_suffix)))[0])
         irods_python_ci_utilities.install_os_packages_from_files(externals)
-    add_cmake_to_front_of_path()
     install_os_specific_dependencies()
 
 def install_os_specific_dependencies_apt():
     update_local_package_repositories()
-    irods_python_ci_utilities.install_os_packages(['make', 'libssl-dev', 'libxml2-dev', 'libcurl4-gnutls-dev', 'gcc', 'libpam-dev'])
+    irods_python_ci_utilities.install_os_packages(['cmake', 'make', 'libssl-dev', 'libxml2-dev', 'libcurl4-gnutls-dev', 'gcc', 'libpam-dev'])
 
 def install_os_specific_dependencies_yum():
-    irods_python_ci_utilities.install_os_packages(['make', 'gcc', 'openssl-devel', 'libxml2-devel', 'curl-devel', 'pam-devel'])
+    irods_python_ci_utilities.install_os_packages(['cmake', 'make', 'gcc', 'openssl-devel', 'libxml2-devel', 'curl-devel', 'pam-devel'])
 
 def install_os_specific_dependencies():
     dispatch_map = {
