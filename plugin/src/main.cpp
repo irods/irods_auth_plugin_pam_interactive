@@ -6,6 +6,7 @@
 #include <irods/irods_client_server_negotiation.hpp>
 #include <irods/irods_logger.hpp>
 #include <irods/irods_pam_auth_object.hpp>
+#include <irods/irods_version.h>
 #include <irods/miscServerFunct.hpp>
 #include <irods/rcConnect.h>
 #include <irods/base64.hpp>
@@ -41,9 +42,17 @@
 #include <fmt/ranges.h> // for fmt::join
 #endif
 
+#if (IRODS_VERSION_MAJOR > 4) || ((IRODS_VERSION_MAJOR == 4) && (IRODS_VERSION_MINOR >= 90))
+#define IRODS_5_AUTH_API 1
+#endif
+
 namespace
 {
+#if IRODS_5_AUTH_API
+  namespace irods_auth = irods::authentication;
+#else
   namespace irods_auth = irods::experimental::auth;
+#endif
   using json = nlohmann::json;
 
   static std::string get_password_from_client_stdin()
