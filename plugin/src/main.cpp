@@ -411,9 +411,14 @@ namespace irods
       resp.erase(irods::AUTH_PASSWORD_KEY);
 
       static constexpr const char* auth_scheme_native_str = "native";
+#if IRODS_5_AUTH_API
+      const json ctx{{irods_auth::scheme_name, auth_scheme_native_str}};
+      irods_auth::authenticate_client(comm, ctx);
+#else
       rodsEnv env{};
       std::strncpy(env.rodsAuthScheme, auth_scheme_native_str, NAME_LEN);
       irods_auth::authenticate_client(comm, env, json{});
+#endif
 
       // If everything completes successfully, the flow is completed and we can
       // consider the user "logged in". Again, the entire native authentication flow
