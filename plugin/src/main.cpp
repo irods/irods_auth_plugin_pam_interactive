@@ -413,7 +413,9 @@ namespace irods
       static constexpr const char* auth_scheme_native_str = "native";
 #if IRODS_5_AUTH_API
       const json ctx{{irods_auth::scheme_name, auth_scheme_native_str}};
-      irods_auth::authenticate_client(comm, ctx);
+      if (const auto err = irods_auth::authenticate_client(comm, ctx); err < 0) {
+          THROW(err, "pam_interactive: Failed to authenticate with generated native password.");
+      }
 #else
       rodsEnv env{};
       std::strncpy(env.rodsAuthScheme, auth_scheme_native_str, NAME_LEN);
