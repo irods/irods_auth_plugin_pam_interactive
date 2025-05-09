@@ -52,7 +52,7 @@ include("${IRODS_TARGETS_PATH}")
 
 include(GNUInstallDirs)
 
-if (IRODS_VERSION VERSION_LESS 4.90.0)
+if (IRODS_VERSION VERSION_LESS 5.0.0)
 	include(UseLibCXX)
 	set(IRODS_AUTHENTICATION_PLUGINS_DIRECTORY "${IRODS_PLUGINS_DIRECTORY}/auth")
 else()
@@ -94,7 +94,7 @@ list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "${CPACK_PACKAGING_INS
 
 list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "${CPACK_PACKAGING_INSTALL_PREFIX}${IRODS_PLUGINS_DIRECTORY}")
 
-if (${IRODS_VERSION} VERSION_GREATER_EQUAL "4.90.0")
+if (${IRODS_VERSION} VERSION_GREATER_EQUAL "5.0.0")
 	list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "${CPACK_PACKAGING_INSTALL_PREFIX}${IRODS_PLUGINS_DIRECTORY}/authentication")
 else()
 	list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "${CPACK_PACKAGING_INSTALL_PREFIX}${IRODS_PLUGINS_DIRECTORY}/auth")
@@ -122,16 +122,16 @@ string(TOUPPER "${project_component_part}-server" irods_plugin_package_server_co
 
 set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_NAME "${PLUGIN_PACKAGE_NAME}-client")
 set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_DEPENDS "irods-runtime (= ${IRODS_VERSION}), libc6")
-set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_BREAKS "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
-set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_REPLACES "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
+set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_BREAKS "${PLUGIN_PACKAGE_NAME} (<< 5.0.0.0-1~), irods-auth-interactive-pam (<< 5.0.0.0-1~)")
+set(CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_REPLACES "${PLUGIN_PACKAGE_NAME} (<< 5.0.0.0-1~), irods-auth-interactive-pam (<< 5.0.0.0-1~)")
 
 set(CPACK_RPM_${irods_plugin_package_client_component}_PACKAGE_NAME "${PLUGIN_PACKAGE_NAME}-client")
 set(CPACK_RPM_${irods_plugin_package_client_component}_PACKAGE_REQUIRES "irods-runtime = ${IRODS_VERSION}")
 
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_NAME "${PLUGIN_PACKAGE_NAME}-server")
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_DEPENDS "irods-server (= ${IRODS_VERSION}), ${CPACK_DEBIAN_${irods_plugin_package_client_component}_PACKAGE_NAME} (= ${CPACK_PACKAGE_VERSION}-${CPACK_DEBIAN_PACKAGE_RELEASE}), libpam0g")
-set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_BREAKS "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
-set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_REPLACES "${PLUGIN_PACKAGE_NAME} (<< 4.90.0.0-1~), irods-auth-interactive-pam (<< 4.90.0.0-1~)")
+set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_BREAKS "${PLUGIN_PACKAGE_NAME} (<< 5.0.0.0-1~), irods-auth-interactive-pam (<< 5.0.0.0-1~)")
+set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_REPLACES "${PLUGIN_PACKAGE_NAME} (<< 5.0.0.0-1~), irods-auth-interactive-pam (<< 5.0.0.0-1~)")
 set(CPACK_DEBIAN_${irods_plugin_package_server_component}_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/packaging/postinst;")
 
 set(CPACK_RPM_${irods_plugin_package_server_component}_PACKAGE_NAME "${PLUGIN_PACKAGE_NAME}-server")
