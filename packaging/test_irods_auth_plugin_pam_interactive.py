@@ -864,7 +864,7 @@ class test_pam_stack_configuration(unittest.TestCase):
 			IrodsController().reload_configuration()
 
 			# Try to authenticate and observe success because this stack always allows authentication.
-			self.auth_session.assert_icommand(['iinit'])
+			self.auth_session.assert_icommand(['iinit'], 'STDOUT', ['Connecting as'])
 
 			# Now set the pam_stack_name to always-deny, which will always cause authentication to fail.
 			server_config['plugin_configuration']['authentication']['pam_interactive']['pam_stack_name'] = 'always-deny'
@@ -889,7 +889,7 @@ class test_pam_stack_configuration(unittest.TestCase):
 			IrodsController().reload_configuration()
 
 			# Try to authenticate and observe success.
-			self.auth_session.assert_icommand(['iinit'])
+			self.auth_session.assert_icommand(['iinit'], 'STDOUT', ['Connecting as'])
 
 	def test_authenticating_with_pam_stack_name_as_non_string_fails(self):
 		server_config_path = paths.server_config_path()
