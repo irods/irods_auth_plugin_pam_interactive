@@ -11,6 +11,15 @@ and this project **only** adheres to the following _(as defined at [Semantic Ver
 > - MINOR version when you add functionality in a backward compatible manner
 > - PATCH version when you make backward compatible bug fixes
 
+## [0.1.2] - 2025-XX-XX
+
+This release makes the plugin compatible with iRODS 5.0.0.
+
+### Fixed
+
+- Return error on failure to authenticate (#66).
+- Update package dependencies for iRODS 5.0.0 (#71).
+
 ## [0.1.1] - 2025-03-04
 
 This release addresses issues with packaging and availability. There are no functional changes to the plugin's implementation.
