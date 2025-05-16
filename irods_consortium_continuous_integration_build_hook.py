@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import glob
 import multiprocessing
 import optparse
@@ -32,17 +30,8 @@ def install_building_dependencies(externals_directory):
     # externals are being supplied via externals_directory, only the externals packages which exist in that directory
     # will be installed.
     externals_list = [
-        'irods-externals-avro-libcxx1.11.0-3',
-        'irods-externals-boost-libcxx1.81.0-1',
-        'irods-externals-clang-runtime13.0.1-0',
-        'irods-externals-clang13.0.1-0',
-        'irods-externals-cppzmq4.8.1-1',
-        'irods-externals-fmt-libcxx8.1.1-1',
-        'irods-externals-json3.10.4-0',
-        'irods-externals-libarchive3.5.2-0',
-        'irods-externals-nanodbc-libcxx2.13.0-2',
-        'irods-externals-spdlog-libcxx1.9.2-2',
-        'irods-externals-zeromq4-1-libcxx4.1.8-1'
+        'irods-externals-boost1.81.0-2',
+        'irods-externals-clang16.0.6-0'
     ]
     if externals_directory == 'None' or externals_directory is None:
         irods_python_ci_utilities.install_irods_core_dev_repository()

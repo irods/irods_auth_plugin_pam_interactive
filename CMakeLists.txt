@@ -27,7 +27,8 @@ endif()
 list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 
 set(IRODS_MINIMUM_VERSION "4.3.1")
-find_package(IRODS "${IRODS_MINIMUM_VERSION}" REQUIRED)
+set(IRODS_MAXIMUM_VERSION "6.0.0")
+find_package(IRODS "${IRODS_MINIMUM_VERSION}...<${IRODS_MAXIMUM_VERSION}" REQUIRED)
 set(IRODS_PLUGIN_VERSION "0.1.2")
 
 set(IRODS_PACKAGE_REVISION "0")
@@ -62,10 +63,8 @@ endif()
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
 find_package(nlohmann_json "3.6.1" REQUIRED)
-find_package(fmt "8.1.1"
+find_package(fmt "8.1.1" REQUIRED
 	HINTS "${IRODS_EXTERNALS_FULLPATH_FMT}")
-find_package(spdlog "1.9.2"
-	HINTS "${IRODS_EXTERNALS_FULLPATH_SPDLOG}")
 find_package(PAM REQUIRED)
 
 add_subdirectory(common)
