@@ -11,7 +11,7 @@ and this project **only** adheres to the following _(as defined at [Semantic Ver
 > - MINOR version when you add functionality in a backward compatible manner
 > - PATCH version when you make backward compatible bug fixes
 
-## [0.1.2] - 2025-XX-XX
+## [0.1.2] - 2025-05-20
 
 This release makes the plugin compatible with iRODS 5.0.0.
 
